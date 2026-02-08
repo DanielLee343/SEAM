@@ -1,0 +1,37 @@
+\documentclass[12pt]{article}
+\usepackage[paperwidth=6in, paperheight=11in, margin=0.3in]{geometry}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\floatname{algorithm}{Procedure}
+\pagestyle{empty}
+\begin{document}
+\begin{algorithm}[H]
+\caption{Additional Action during Page Mapping}
+\label{alg:page-mapping}
+\begin{algorithmic}[1]
+\STATE Let $S$ be the group size
+\STATE Let $bitvec$ be a temporary bit vector, initially all zero
+\STATE \textbf{Input:} regular $ppn$, $page.use\_tracker$, $cgroup\_id$
+\STATE bitvec.init($S$)
+\FOR{i = 0 to use\_tracker.size() - 1}
+    \STATE bitvec $|=$ (1 $\ll$ use\_tracker[i].group\_member\_id)
+    \IF{use\_tracker[i].cgroup\_id == cgroup\_id}
+        \STATE use\_tracker[i].map\_count += 1
+        \STATE \textbf{goto} FINALIZE
+    \ENDIF
+\ENDFOR
+\STATE group\_member\_id = pick\_rand\_0\_position\_from(bitvec)
+\STATE use\_tracker.insert(cgroup\_id, group\_member\_id, map\_count = 1)
+\STATE \textbf{FINALIZE:}
+\IF{use\_tracker.size() $>$ 1}
+    \STATE ppn' = N + ppn * S + group\_member\_id \hfill \textcolor{blue} {// $N$: total regular PPNs}
+    \STATE install\_pte(ppn')
+\ELSE
+    \STATE install\_pte(ppn) \hfill // Regular PPN
+    \STATE write\_back($CL(ppn)s$)
+\ENDIF
+\end{algorithmic}
+\end{algorithm}
+\end{document}

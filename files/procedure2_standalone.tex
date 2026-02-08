@@ -1,0 +1,30 @@
+\documentclass[12pt]{article}
+\usepackage[paperwidth=5.5in, paperheight=11in, margin=0.3in]{geometry}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\floatname{algorithm}{Procedure}
+\pagestyle{empty}
+\begin{document}
+\setcounter{algorithm}{1}
+\begin{algorithm}[H]
+\caption{Additional Action during Page Unmapping}
+\label{alg:page-unmapping}
+\begin{algorithmic}[1]
+\STATE \textbf{Input:} $sharing\_only\_ppn$, $cgroup\_id$
+\STATE flush($CL(sharing\_only\_ppn)s$)
+\STATE ppn = (sharing\_only\_ppn - N ) / S \hfill \textcolor{blue} {// Reverse merging}
+\STATE use\_tracker = pfn\_to\_page(ppn).use\_tracker
+\FOR{i = 0 to use\_tracker.size() - 1}
+    \IF{use\_tracker[i].cgroup\_id == cgroup\_id}
+        \STATE use\_tracker[i].map\_count -= 1
+        \IF{use\_tracker[i].map\_count == 0}
+            \STATE DELETE use\_tracker[i]
+        \ENDIF
+        \STATE return
+    \ENDIF
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+\end{document}

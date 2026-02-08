@@ -1,0 +1,8 @@
+Procedure 1 presents the new actions during page mapping procedure. During page mapping, the kernel first scans page's use_tracker to check if the current cgroup is already tracked. During the scan, it also builds an intermediate bit vector representing all group_member_id values currently in use by other cgroups (line~7).
+If an entry for the mapping cgroup already exists (line~8), its map_count is simply incremented (line~9), and the existing group_member_id is reused.
+If no entry is found, a new one is created: a new group_member_id is chosen randomly from the slots not marked in the bit vector (line~13), and a new triplet is added to the use_tracker with its map_count initialized to one (line~14).
+Finally, when installing the PTE, if use_tracker contains more than one entry, we allocate a sharing-only PPN using the group_member_id (line~17); otherwise, the regular PPN is used (line~19).
+
+Procedure 2 describes the new actions during the page unmapping procedure.
+When unmapping, Procedure 2 first calculates the regular PPN (line~2). Then it scans through the corresponding use_tracker to find a match of that process's cgroup_id.
+Once found, Procedure 2 decrements the map_count (line~6), and deletes the element from use_tracker (line~8) if the count reaches zero.
