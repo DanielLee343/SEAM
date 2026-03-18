@@ -212,6 +212,124 @@ export default function Home() {
               map_count (line 7), and deletes the element from use_tracker (line 9) if the count reaches zero.
             </p>
           </div>
+
+          {/* KSM Integration */}
+          <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>KSM Integration</h3>
+          <p style={{ color: '#4b5563' }}>
+            Linux&apos;s <strong>Kernel Same-page Merging (KSM)</strong> scans memory for identical pages and merges
+            them to save memory. We modify KSM so that when it merges pages across different cgroups,
+            it encodes the PTE using SEAM rather than directly sharing the physical address.
+          </p>
+          <div className="procedure-descriptions">
+            <p>
+              In the KSM merge path (<code>replace_page</code>), when a page is being shared across cgroups,
+              SEAM initializes a per-page <code>page_cgroup_vector</code> (the use_tracker from Procedure 1)
+              using a lock-free compare-and-swap. It then calls <code>try_inc_page_usecount_v2()</code>,
+              which scans the vector, builds the intermediate bit vector of in-use group member IDs, and either
+              increments the map_count for an existing cgroup entry or creates a new one with a randomly
+              chosen group_member_id &mdash; exactly following Procedure 1.
+            </p>
+            <p>
+              When encoding is triggered (i.e., a second cgroup maps the same page), the PTE is
+              set to the sharing-only PPN using the
+              formula: <code>enc_pfn = (pfn - base_pfn) &times; group_size + end_cxl_pfn + encode_idx</code>.
+              A special PTE bit (bit 52, <code>_PAGE_SEAM_ENCODE</code>) marks the PTE as encoded, so the
+              kernel can transparently decode it back to the regular PPN on access and unmap.
+              Notably, the cgroup_id is obtained from the owning process (<code>mm-&gt;owner</code>), not
+              from <code>current</code>, since KSM runs as a kernel thread (ksmd).
+            </p>
+          </div>
+
+          {/* Patch File List */}
+          <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>Patch Overview</h3>
+          <p style={{ color: '#4b5563' }}>
+            The kernel patch adds 3 new files and modifies 7 existing files. Below is a summary of
+            every file the patch touches and its role.
+          </p>
+
+          <h4 style={{ color: '#1e3a5f', marginTop: '1.5rem', marginBottom: '0.75rem' }}>New Files</h4>
+          <div className="file-list">
+            <div className="file-item file-item-new">
+              <code className="file-path">include/linux/encode_common.h</code>
+              <span className="file-desc">
+                Shared data structures: <code>page_cgroup_triplet</code> (4-byte packed struct
+                with cgroup_id, encode_idx, map_count), <code>page_cgroup_vector</code> (resizable
+                array with spinlock + RCU), and global configuration variables (base_pfn, group_size,
+                end_cxl_pfn).
+              </span>
+            </div>
+            <div className="file-item file-item-new">
+              <code className="file-path">include/linux/page_cgroup_vector.h</code>
+              <span className="file-desc">
+                API header declaring vector operations: init, try_inc_page_usecount,
+                reset_page_usecount, free, and debug print.
+              </span>
+            </div>
+            <div className="file-item file-item-new">
+              <code className="file-path">mm/page_cgroup_vector.c</code>
+              <span className="file-desc">
+                Core implementation of the per-page use_tracker (~305 lines). Implements the logic
+                from Procedures 1 and 2: linear scan, bitvector construction, random bit selection,
+                map_count increment/decrement, and RCU-safe element deletion.
+              </span>
+            </div>
+          </div>
+
+          <h4 style={{ color: '#1e3a5f', marginTop: '1.5rem', marginBottom: '0.75rem' }}>Modified Files</h4>
+          <div className="file-list">
+            <div className="file-item">
+              <code className="file-path">mm/memory.c</code>
+              <span className="file-desc">
+                Core SEAM logic (~300 lines). Encodes PTEs for file-backed pages
+                in <code>alloc_set_pte()</code>, decodes in <code>vm_normal_page()</code>,
+                handles unmap cleanup in <code>vm_normal_page_seam()</code>.
+                Also adds CLWB/CLFLUSH cache writeback, a debugfs control
+                interface, and a helper to get a task&apos;s cgroup_id.
+              </span>
+            </div>
+            <div className="file-item">
+              <code className="file-path">mm/ksm.c</code>
+              <span className="file-desc">
+                KSM integration. In <code>replace_page()</code>, initializes the
+                page_cgroup_vector via lock-free cmpxchg, encodes PTEs when merging
+                pages across cgroups, using <code>mm-&gt;owner</code> for cgroup_id.
+              </span>
+            </div>
+            <div className="file-item">
+              <code className="file-path">include/linux/mm_types.h</code>
+              <span className="file-desc">
+                Adds <code>page_cgroup_vector*</code> pointer to <code>struct page</code>,
+                enabling per-page tracking of which cgroups share the page.
+              </span>
+            </div>
+            <div className="file-item">
+              <code className="file-path">arch/x86/include/asm/pgtable_types.h</code>
+              <span className="file-desc">
+                Defines <code>_PAGE_BIT_SEAM_ENCODE</code> (bit 52) and adds it
+                to the PTE change mask so the kernel recognizes encoded PTEs.
+              </span>
+            </div>
+            <div className="file-item">
+              <code className="file-path">mm/khugepaged.c</code>
+              <span className="file-desc">
+                Adds <code>SCAN_PAGE_ENCODED</code> result code. Skips SEAM-encoded
+                pages during huge page collapse to avoid corrupting encoded PTEs.
+              </span>
+            </div>
+            <div className="file-item">
+              <code className="file-path">drivers/nvdimm/nd.h</code>
+              <span className="file-desc">
+                Increases <code>MAX_STRUCT_PAGE_SIZE</code> from 64 to 80 bytes to
+                accommodate the new page_cgroup_vector pointer in struct page.
+              </span>
+            </div>
+            <div className="file-item">
+              <code className="file-path">mm/Makefile</code>
+              <span className="file-desc">
+                Adds <code>page_cgroup_vector.o</code> to the build.
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

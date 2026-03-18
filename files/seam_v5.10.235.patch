@@ -25,58 +25,6 @@
  #define _PAGE_CHG_MASK	(_COMMON_PAGE_CHG_MASK | _PAGE_PAT)
  #define _HPAGE_CHG_MASK (_COMMON_PAGE_CHG_MASK | _PAGE_PSE | _PAGE_PAT_LARGE)
  
---- /home/lyuze/linux-5.10.235/arch/x86/mm/fault.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/arch/x86/mm/fault.c	2025-10-25 18:17:55.540070358 -0400
-@@ -515,7 +515,7 @@
- {
- 	if (!oops_may_print())
- 		return;
--
-+	unsigned long pfn;
- 	if (error_code & X86_PF_INSTR) {
- 		unsigned int level;
- 		pgd_t *pgd;
-@@ -525,23 +525,30 @@
- 		pgd += pgd_index(address);
- 
- 		pte = lookup_address_in_pgd(pgd, address, &level);
--
-+		if (pte && pte_present(*pte)) {
-+			pfn = pte_pfn(*pte);
-+		}
-+		
- 		if (pte && pte_present(*pte) && !pte_exec(*pte))
--			pr_crit("kernel tried to execute NX-protected page - exploit attempt? (uid: %d)\n",
--				from_kuid(&init_user_ns, current_uid()));
--		if (pte && pte_present(*pte) && pte_exec(*pte) &&
--				(pgd_flags(*pgd) & _PAGE_USER) &&
--				(__read_cr4() & X86_CR4_SMEP))
-+		pr_crit("kernel tried to execute NX-protected page - exploit attempt? (uid: %d)\n",
-+			from_kuid(&init_user_ns, current_uid()));
-+			if (pte && pte_present(*pte) && pte_exec(*pte) &&
-+			(pgd_flags(*pgd) & _PAGE_USER) &&
-+			(__read_cr4() & X86_CR4_SMEP))
- 			pr_crit("unable to execute userspace code (SMEP?) (uid: %d)\n",
- 				from_kuid(&init_user_ns, current_uid()));
--	}
--
--	if (address < PAGE_SIZE && !user_mode(regs))
-+			}
-+			
-+	if (address < PAGE_SIZE && !user_mode(regs)){
-+		pr_alert("Faulting PFN: %lu\n", pfn);
- 		pr_alert("BUG: kernel NULL pointer dereference, address: %px\n",
- 			(void *)address);
--	else
-+	}
-+	else {
-+		pr_alert("Faulting PFN: %lu\n", pfn);
- 		pr_alert("BUG: unable to handle page fault for address: %px\n",
- 			(void *)address);
-+	}
- 
- 	pr_alert("#PF: %s %s in %s mode\n",
- 		 (error_code & X86_PF_USER)  ? "user" : "supervisor",
 --- /home/lyuze/linux-5.10.235/drivers/nvdimm/nd.h	2025-03-13 07:47:45.000000000 -0400
 +++ /home/lyuze/linux_page_encoding/drivers/nvdimm/nd.h	2025-10-25 18:16:15.611621114 -0400
 @@ -393,7 +393,7 @@
@@ -88,7 +36,7 @@
  int nvdimm_setup_pfn(struct nd_pfn *nd_pfn, struct dev_pagemap *pgmap);
  #else
  static inline int nvdimm_setup_pfn(struct nd_pfn *nd_pfn,
---- /dev/null	2026-02-07 21:35:18.696004439 -0500
+--- /dev/null	2026-02-10 19:18:13.807000055 -0500
 +++ /home/lyuze/linux_page_encoding/include/linux/encode_common.h	2026-02-07 20:59:13.413605803 -0500
 @@ -0,0 +1,44 @@
 +#ifndef _ENCODE_COMMON_H
@@ -135,16 +83,6 @@
 +u64 get_task_cgroup_id(struct task_struct *task);
 +
 +#endif
---- /home/lyuze/linux-5.10.235/include/linux/mm.h	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/include/linux/mm.h	2025-10-25 18:17:55.544070319 -0400
-@@ -2379,6 +2379,7 @@
- {
- 	ClearPageReserved(page);
- 	init_page_count(page);
-+	// init_page_usecount(page);
- 	__free_page(page);
- }
- 
 --- /home/lyuze/linux-5.10.235/include/linux/mm_types.h	2025-03-13 07:47:45.000000000 -0400
 +++ /home/lyuze/linux_page_encoding/include/linux/mm_types.h	2025-10-25 18:17:55.544070319 -0400
 @@ -15,6 +15,7 @@
@@ -168,7 +106,7 @@
  
  #ifdef CONFIG_MEMCG
  	union {
---- /dev/null	2026-02-07 21:35:18.696004439 -0500
+--- /dev/null	2026-02-10 19:18:13.807000055 -0500
 +++ /home/lyuze/linux_page_encoding/include/linux/page_cgroup_vector.h	2026-02-07 20:13:42.287433858 -0500
 @@ -0,0 +1,14 @@
 +#ifndef _PAGE_CGROUP_VECTOR_H
@@ -185,114 +123,16 @@
 +			   unsigned long pfn);
 +void free_page_cgroup_vector_v2(void);
 +#endif
---- /home/lyuze/linux-5.10.235/include/linux/page_ref.h	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/include/linux/page_ref.h	2025-10-25 18:17:55.544070319 -0400
-@@ -67,6 +67,11 @@
- 	return atomic_read(&page->_refcount);
- }
- 
-+// static inline int page_use_count(const struct page *page)
-+// {
-+// 	return atomic_read(&page->_usecount);
-+// }
-+
- static inline int page_count(struct page *page)
- {
- 	return atomic_read(&compound_head(page)->_refcount);
-@@ -79,6 +84,11 @@
- 		__page_ref_set(page, v);
- }
- 
-+// static inline void set_page_usecount(struct page *page, int v)
-+// {
-+// 	atomic_set(&page->_usecount, v);
-+// }
-+
- /*
-  * Setup the page count before being freed into the page allocator for
-  * the first time (boot or memory hotplug)
-@@ -88,6 +98,11 @@
- 	set_page_count(page, 1);
- }
- 
-+// static inline void init_page_usecount(struct page *page)
-+// {
-+// 	set_page_usecount(page, 0); // 0 or 1?
-+// }
-+
- static inline void page_ref_add(struct page *page, int nr)
- {
- 	atomic_add(nr, &page->_refcount);
-@@ -118,6 +133,11 @@
- 		__page_ref_mod(page, 1);
- }
- 
-+// static inline void page_usecount_inc(struct page *page)
-+// {
-+// 	atomic_inc(&page->_usecount);
-+// }
-+
- static inline void page_ref_dec(struct page *page)
- {
- 	atomic_dec(&page->_refcount);
-@@ -125,6 +145,11 @@
- 		__page_ref_mod(page, -1);
- }
- 
-+// static inline void page_usecount_dec(struct page *page)
-+// {
-+// 	atomic_dec(&page->_usecount);
-+// }
-+
- static inline int page_ref_sub_and_test(struct page *page, int nr)
- {
- 	int ret = atomic_sub_and_test(nr, &page->_refcount);
-@@ -189,4 +214,4 @@
- 		__page_ref_unfreeze(page, count);
- }
- 
--#endif
-+#endif
-\ No newline at end of file
---- /home/lyuze/linux-5.10.235/include/linux/rmap.h	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/include/linux/rmap.h	2025-10-25 18:16:16.387390275 -0400
-@@ -275,7 +275,7 @@
- 	struct anon_vma *(*anon_lock)(struct page *page);
- 	bool (*invalid_vma)(struct vm_area_struct *vma, void *arg);
- };
--
-+void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc, bool locked);
- void rmap_walk(struct page *page, struct rmap_walk_control *rwc);
- void rmap_walk_locked(struct page *page, struct rmap_walk_control *rwc);
- 
 --- /home/lyuze/linux-5.10.235/mm/Makefile	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/Makefile	2026-02-07 20:13:32.354556245 -0500
++++ /home/lyuze/linux_page_encoding/mm/Makefile	2026-02-11 12:56:30.340275165 -0500
 @@ -61,6 +61,7 @@
  obj-y += page-alloc.o
  obj-y += init-mm.o
  obj-y += memblock.o
-+obj-y += page_cgroup_vector_v2.o
++obj-y += page_cgroup_vector.o
  
  ifdef CONFIG_MMU
  	obj-$(CONFIG_ADVISE_SYSCALLS)	+= madvise.o
---- /home/lyuze/linux-5.10.235/mm/filemap.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/filemap.c	2025-10-25 18:17:55.544070319 -0400
-@@ -43,6 +43,7 @@
- #include <linux/ramfs.h>
- #include <linux/page_idle.h>
- #include "internal.h"
-+#include <linux/debugfs.h>
- 
- #define CREATE_TRACE_POINTS
- #include <trace/events/filemap.h>
-@@ -2838,6 +2839,7 @@
- }
- EXPORT_SYMBOL(filemap_fault);
- 
-+
- void filemap_map_pages(struct vm_fault *vmf,
- 		pgoff_t start_pgoff, pgoff_t end_pgoff)
- {
 --- /home/lyuze/linux-5.10.235/mm/khugepaged.c	2025-03-13 07:47:45.000000000 -0400
 +++ /home/lyuze/linux_page_encoding/mm/khugepaged.c	2026-01-04 22:31:06.567340823 -0500
 @@ -22,6 +22,7 @@
@@ -922,28 +762,8 @@
  
  
  /**
---- /home/lyuze/linux-5.10.235/mm/mmap.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/mmap.c	2025-10-25 18:17:55.544070319 -0400
-@@ -47,6 +47,7 @@
- #include <linux/pkeys.h>
- #include <linux/oom.h>
- #include <linux/sched/mm.h>
-+#include <linux/sched.h>
- 
- #include <linux/uaccess.h>
- #include <asm/cacheflush.h>
---- /home/lyuze/linux-5.10.235/mm/page_alloc.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/page_alloc.c	2025-10-25 18:17:55.544070319 -0400
-@@ -1443,6 +1443,7 @@
- 	mm_zero_struct_page(page);
- 	set_page_links(page, zone, nid, pfn);
- 	init_page_count(page);
-+	// init_page_usecount(page);
- 	page_mapcount_reset(page);
- 	page_cpupid_reset_last(page);
- 	page_kasan_tag_reset(page);
---- /dev/null	2026-02-07 21:35:18.696004439 -0500
-+++ /home/lyuze/linux_page_encoding/mm/page_cgroup_vector_v2.c	2026-02-07 20:13:20.881698025 -0500
+--- /dev/null	2026-02-10 19:18:13.807000055 -0500
++++ /home/lyuze/linux_page_encoding/mm/page_cgroup_vector.c	2026-02-07 20:13:20.881698025 -0500
 @@ -0,0 +1,305 @@
 +#include <linux/kernel.h>
 +#include <linux/mm.h>
@@ -1250,14 +1070,3 @@
 +		}
 +	}
 +}
---- /home/lyuze/linux-5.10.235/mm/rmap.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/rmap.c	2025-10-25 18:16:16.557018150 -0400
-@@ -1922,7 +1922,7 @@
-  * vm_flags for that VMA.  That should be OK, because that vma shouldn't be
-  * LOCKED.
-  */
--static void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
-+void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
- 		bool locked)
- {
- 	struct address_space *mapping = page_mapping(page);
