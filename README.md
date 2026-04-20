@@ -1,63 +1,71 @@
-# Next + Netlify Starter
+# CPM Project Website
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/46648482-644c-4c80-bafb-872057e51b6b/deploy-status)](https://app.netlify.com/sites/next-dev-starter/deploys)
+Companion site for the MICRO 2026 paper
+**"Non-intrusive Cache Side Channel Protection Near Memory"** (CPM).
 
-This is a [Next.js](https://nextjs.org/) v16 project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app) and set up to be instantly deployed to [Netlify](https://www.netlify.com/)!
+Live production URL: https://seam-proj.netlify.app
 
-This project is a very minimal starter that includes 2 sample components, a global stylesheet, a `netlify.toml` for deployment, and a `jsconfig.json` for setting up absolute imports and aliases. With Netlify, you'll have access to features like Preview Mode, server-side rendering/incremental static regeneration via Netlify Functions, and internationalized routing on deploy automatically.
+## Site Contents
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/netlify-templates/next-netlify-starter&utm_source=github&utm_medium=nextstarter-cs&utm_campaign=devex-cs)
+The single landing page (`pages/index.js`) walks through the paper in five sections:
 
-(If you click this button, it will create a new repo for you that looks exactly like this one, and sets that repo up immediately for deployment on Netlify)
+- **Hero / Abstract** — the non-intrusive positioning and what CPM delivers.
+- **Motivation** — why memory sharing is disabled in data centers today (reuse-based side channels, current practice, why prior hardware defenses are too invasive).
+- **Approach** — the "merge at the memory endpoint" idea, a 3-figure comparison of current deployment / prior defenses / CPM, a components-touched table, and the OS-side procedures + KSM integration + full Linux patch file-by-file overview.
+- **Generality** — multi-socket support, huge pages, and applicability to conflict side channels.
+- **Evaluation** — Flush+Reload across six scenarios (containers / VMs / host × same-core / different-core), access-latency distribution, performance and memory-saving stats, and VM-density sensitivity.
+- **Download** — the Linux 5.10.235 kernel patch served at `/seam_v5.10.235.patch`.
 
-## Table of Contents:
+## Repo Layout
 
-- [Getting Started](#getting-started)
-- [Installation options](#installation-options)
-- [Testing](#testing)
-  - [Included Default Testing](#included-default-testing)
-  - [Removing Renovate](#removing-renovate)
-
-## Getting Started
-
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
+```
+pages/          Next.js pages (index.js is the whole site)
+components/     Header/Footer
+styles/         globals.css
+public/         Static assets served at site root: figures, favicon, kernel patch
+files/          Source-of-truth for the paper PDF and kernel patch (master copy
+                of seam_v5.10.235.patch is kept here; public/ is a copy)
+netlify.toml    Netlify build config (publishes .next/)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Local Development
 
-You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev      # http://localhost:3000 with hot reload
+```
 
-### Installation options
+Edit `pages/index.js` and the page auto-reloads.
 
-**Option one:** One-click deploy
+## Build
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/netlify-templates/next-netlify-starter&utm_source=github&utm_medium=nextstarter-cs&utm_campaign=devex-cs)
+```bash
+npm run build    # produces .next/ (Netlify publishes this)
+```
 
-**Option two:** Manual clone
+## Deploy
 
-1. Clone this repo: `git clone https://github.com/netlify-templates/next-netlify-starter.git`
-2. Navigate to the directory and run `npm install`
-3. Run `npm run dev`
-4. Make your changes
-5. Connect to [Netlify](https://url.netlify.com/Bk4UicocL) manually (the `netlify.toml` file is the one you'll need to make sure stays intact to make sure the export is done and pointed to the right stuff)
+Deploys are GitHub-driven: **pushing to `main` auto-publishes to production** via Netlify's GitHub integration. No manual step needed.
 
-## Testing
+Draft / preview deploys via the Netlify CLI:
 
-### Included Default Testing
+```bash
+netlify deploy          # draft URL, does NOT touch production
+netlify deploy --prod   # promote to seam-proj.netlify.app
+```
 
-We’ve included some tooling that helps us maintain these templates. This template currently uses:
+Check deploy status:
 
-- [Renovate](https://www.mend.io/free-developer-tools/renovate/) - to regularly update our dependencies
-- [Cypress](https://www.cypress.io/) - to run tests against how the template runs in the browser
-- [Cypress Netlify Build Plugin](https://github.com/cypress-io/netlify-plugin-cypress) - to run our tests during our build process
+```bash
+netlify status
+```
 
-If your team is not interested in this tooling, you can remove them with ease!
+## Updating the Kernel Patch
 
-### Removing Renovate
+`files/seam_v5.10.235.patch` is the source of truth. The download link on the site points to `public/seam_v5.10.235.patch`, so after editing the patch, sync the copy:
 
-In order to keep our project up-to-date with dependencies we use a tool called [Renovate](https://github.com/marketplace/renovate). If you’re not interested in this tooling, delete the `renovate.json` file and commit that onto your main branch.
+```bash
+cp files/seam_v5.10.235.patch public/seam_v5.10.235.patch
+```
+
+Then commit both and push.
