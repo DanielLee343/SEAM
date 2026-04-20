@@ -4,18 +4,19 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>SEAM: Secure and Practical Endpoint Address Merging</title>
+        <title>CPM: Non-intrusive Cache Side Channel Protection Near Memory</title>
         <link rel="icon" href="/favicon.ico" />
-        <meta name="description" content="SEAM: A practical hardware defense that securely restores memory sharing by modifying only the memory controller." />
+        <meta name="description" content="CPM: A non-intrusive hardware defense that protects against reuse-based cache side channels by placing all protection logic inside the memory controller." />
       </Head>
 
       {/* Navigation */}
       <nav className="navbar">
         <div className="navbar-inner">
-          <span className="navbar-title">SEAM</span>
+          <span className="navbar-title">CPM</span>
           <div className="navbar-links">
             <a href="#motivation">Motivation</a>
             <a href="#approach">Approach</a>
+            <a href="#generality">Generality</a>
             <a href="#evaluation">Evaluation</a>
             <a href="#download">Download</a>
           </div>
@@ -24,20 +25,23 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="hero">
-        <h1>SEAM</h1>
-        <p className="subtitle">Secure and Practical Endpoint Address Merging</p>
+        <h1>CPM</h1>
+        <p className="subtitle">Non-intrusive Cache Side Channel Protection Near Memory</p>
+        <p className="venue">MICRO 2026 &middot; Athens, Greece</p>
         <div className="abstract">
           <p>
-            Memory sharing across jobs enables reuse-based side channels that leak private information,
-            forcing cloud providers to disable sharing entirely. Prior hardware defenses require modifying
-            many CPU components (L1/L2 caches, LLC, coherence directory, MMU, and memory controller),
-            making practical adoption difficult.
+            Memory sharing across security domains enables reuse-based side channels that leak non-shared data,
+            forcing data centers to disable sharing entirely &mdash; and contradicting a main goal of cloud computing:
+            boosting cost efficiency via resource sharing. Prior hardware defenses require modifications spread
+            across L1/L2 caches, the LLC, coherence directory, MMU, and memory controller. Such widespread
+            changes are intrusive and have, so far, prevented real-world use.
           </p>
           <p>
-            <strong style={{ color: '#93c5fd' }}>SEAM</strong> reduces the total hardware modifications needed for
-            comprehensive protection against both cache and memory reuse-based side channels down
-            to <strong style={{ color: '#93c5fd' }}>just one</strong> &mdash; the memory controller. We prototype SEAM on a real system
-            and demonstrate it securely restores memory sharing with negligible performance overhead.
+            <strong style={{ color: '#93c5fd' }}>CPM</strong> is a non-intrusive design that achieves global
+            (i.e., all caches + memory) protection through <strong style={{ color: '#93c5fd' }}>local changes to a single
+            component</strong> &mdash; the memory controller. Real-system evaluations on a high-end Intel server
+            demonstrate secure <em>elimination</em> of cache reuse side channels across containers, VMs, and
+            host processes, despite only modifying the MC.
           </p>
         </div>
       </section>
@@ -85,9 +89,10 @@ export default function Home() {
         <div className="section">
           <h2>Our Approach</h2>
           <p className="section-intro">
-            SEAM delays merging unique addresses into a shared address until the very end &mdash; when
-            the request reaches memory. This eliminates reuse-based cache side channels without
-            modifying any caches.
+            CPM delays merging unique addresses into a shared address until the very end &mdash; when
+            the request leaves the cache hierarchy and arrives at the memory controller. This places
+            all protection <em>near memory</em>, eliminating reuse-based cache side channels without
+            modifying any cache.
           </p>
 
           <div className="key-idea">
@@ -120,12 +125,12 @@ export default function Home() {
             </div>
             <div className="approach-item">
               <div className="figure-wrapper highlight-card">
-                <img src="/intro-pcss.png" alt="SEAM: unique in cache, shared at memory endpoint" />
+                <img src="/intro-pcss.png" alt="CPM: unique in cache, shared at memory endpoint" />
               </div>
-              <div className="label">(c) SEAM (Ours)</div>
+              <div className="label">(c) CPM (Ours)</div>
               <div className="caption">
-                Jobs use unique addresses in cache. The MC merges them to shared addresses
-                at the memory endpoint. Only the MC needs modification.
+                Jobs use unique addresses in cache. The MC merges them into a shared address
+                right before data reaches DRAM. Only the MC needs modification.
               </div>
             </div>
           </div>
@@ -157,7 +162,7 @@ export default function Home() {
                   <td><span className="cross">&#x2716;</span></td>
                 </tr>
                 <tr>
-                  <td>SEAM (Ours)</td>
+                  <td>CPM (Ours)</td>
                   <td><span className="cross">&#x2716;</span></td>
                   <td><span className="dash">&mdash;</span></td>
                   <td><span className="dash">&mdash;</span></td>
@@ -170,14 +175,14 @@ export default function Home() {
             </table>
             <p style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.85rem', marginTop: '0.5rem' }}>
               <span className="cross">&#x2716;</span> = requires modification, <span className="dash">&mdash;</span> = no change needed.
-              SEAM reduces modifications from 7 components down to just 2 (MC + OS).
+              CPM reduces modifications from 7 components down to just 2 (MC + OS) &mdash; and leaves the entire core pipeline untouched.
             </p>
           </div>
           {/* OS Procedures */}
           <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>OS Modifications</h3>
           <p style={{ color: '#4b5563' }}>
-            SEAM requires only minimal OS changes, confined to page allocation and deallocation.
-            We modify Linux kernel 5.10.235 with just 500 lines of code.
+            CPM requires only minimal OS changes, confined to page allocation and deallocation.
+            We modify Linux kernel 5.10.235 with roughly 900 lines of code.
           </p>
 
           <div className="eval-grid">
@@ -218,12 +223,12 @@ export default function Home() {
           <p style={{ color: '#4b5563' }}>
             Linux&apos;s <strong>Kernel Same-page Merging (KSM)</strong> scans memory for identical pages and merges
             them to save memory. We modify KSM so that when it merges pages across different cgroups,
-            it encodes the PTE using SEAM rather than directly sharing the physical address.
+            it encodes the PTE using CPM rather than directly sharing the physical address.
           </p>
           <div className="procedure-descriptions">
             <p>
               In the KSM merge path (<code>replace_page</code>), when a page is being shared across cgroups,
-              SEAM initializes a per-page <code>page_cgroup_vector</code> (the use_tracker from Procedure 1)
+              CPM initializes a per-page <code>page_cgroup_vector</code> (the use_tracker from Procedure 1)
               using a lock-free compare-and-swap. It then calls <code>try_inc_page_usecount_v2()</code>,
               which scans the vector, builds the intermediate bit vector of in-use group member IDs, and either
               increments the map_count for an existing cgroup entry or creates a new one with a randomly
@@ -233,7 +238,7 @@ export default function Home() {
               When encoding is triggered (i.e., a second cgroup maps the same page), the PTE is
               set to the sharing-only PPN using the
               formula: <code>enc_pfn = (pfn - base_pfn) &times; group_size + end_cxl_pfn + encode_idx</code>.
-              A special PTE bit (bit 52, <code>_PAGE_SEAM_ENCODE</code>) marks the PTE as encoded, so the
+              A special PTE bit (bit 52, <code>_PAGE_CPM_ENCODE</code>) marks the PTE as encoded, so the
               kernel can transparently decode it back to the regular PPN on access and unmap.
               Notably, the cgroup_id is obtained from the owning process (<code>mm-&gt;owner</code>), not
               from <code>current</code>, since KSM runs as a kernel thread (ksmd).
@@ -243,7 +248,7 @@ export default function Home() {
           {/* Patch File List */}
           <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>Patch Overview</h3>
           <p style={{ color: '#4b5563' }}>
-            The kernel patch adds 3 new files and modifies 7 existing files. Below is a summary of
+            The kernel patch adds 3 new files and modifies 10 existing files. Below is a summary of
             every file the patch touches and its role.
           </p>
 
@@ -268,7 +273,7 @@ export default function Home() {
             <div className="file-item file-item-new">
               <code className="file-path">mm/page_cgroup_vector.c</code>
               <span className="file-desc">
-                Core implementation of the per-page use_tracker (~305 lines). Implements the logic
+                Core implementation of the per-page use_tracker (~546 lines). Implements the logic
                 from Procedures 1 and 2: linear scan, bitvector construction, random bit selection,
                 map_count increment/decrement, and RCU-safe element deletion.
               </span>
@@ -280,7 +285,7 @@ export default function Home() {
             <div className="file-item">
               <code className="file-path">mm/memory.c</code>
               <span className="file-desc">
-                Core SEAM logic (~300 lines). Encodes PTEs for file-backed pages
+                Core CPM logic (~300 lines). Encodes PTEs for file-backed pages
                 in <code>alloc_set_pte()</code>, decodes in <code>vm_normal_page()</code>,
                 handles unmap cleanup in <code>vm_normal_page_seam()</code>.
                 Also adds CLWB/CLFLUSH cache writeback, a debugfs control
@@ -303,16 +308,42 @@ export default function Home() {
               </span>
             </div>
             <div className="file-item">
+              <code className="file-path">include/linux/rmap.h</code>
+              <span className="file-desc">
+                Adds a new <code>PVMW_CPM_DECODE</code> flag (bit 2) to the
+                <code>page_vma_mapped_walk</code> API so reverse-mapping walks can
+                request decoding of CPM-encoded PTEs when resolving a PFN.
+              </span>
+            </div>
+            <div className="file-item">
+              <code className="file-path">mm/page_vma_mapped.c</code>
+              <span className="file-desc">
+                In <code>check_pte()</code>, decodes the PFN via
+                <code>seam_decode_pfn()</code> when <code>PVMW_CPM_DECODE</code> is set.
+                Only the unmap path opts in; page_referenced/page_mkclean skip decoding
+                to avoid PTL contention.
+              </span>
+            </div>
+            <div className="file-item">
+              <code className="file-path">mm/rmap.c</code>
+              <span className="file-desc">
+                In <code>try_to_unmap_one()</code>, sets <code>PVMW_CPM_DECODE</code>,
+                decodes the encoded PFN for correct subpage computation, and
+                decrements <code>num_ksm_coded</code> when reclaim clears an
+                encoded KSM PTE.
+              </span>
+            </div>
+            <div className="file-item">
               <code className="file-path">arch/x86/include/asm/pgtable_types.h</code>
               <span className="file-desc">
-                Defines <code>_PAGE_BIT_SEAM_ENCODE</code> (bit 52) and adds it
+                Defines <code>_PAGE_BIT_CPM_ENCODE</code> (bit 52) and adds it
                 to the PTE change mask so the kernel recognizes encoded PTEs.
               </span>
             </div>
             <div className="file-item">
               <code className="file-path">mm/khugepaged.c</code>
               <span className="file-desc">
-                Adds <code>SCAN_PAGE_ENCODED</code> result code. Skips SEAM-encoded
+                Adds <code>SCAN_PAGE_ENCODED</code> result code. Skips CPM-encoded
                 pages during huge page collapse to avoid corrupting encoded PTEs.
               </span>
             </div>
@@ -333,71 +364,175 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Generality Section */}
+      <div id="generality">
+        <div className="section">
+          <h2>Generality</h2>
+          <p className="section-intro">
+            The same table-free merging hardware extends to multiple practical scenarios with
+            minimal changes.
+          </p>
+          <div className="motivation-grid">
+            <div className="motivation-card">
+              <h3>Multi-socket Systems</h3>
+              <p>
+                On two-socket servers that partition the physical address space into two halves,
+                CPM instantiates the merging formula per socket &mdash; each socket&apos;s sharing-only
+                PPNs stay within its own half of the address range, preserving existing NUMA
+                and interleaving behavior.
+              </p>
+            </div>
+            <div className="motivation-card">
+              <h3>Huge Pages</h3>
+              <p>
+                Current systems share memory at 4 KB granularity. CPM extends naturally to 2 MB huge
+                pages by merging only the most significant PPN bits and routing 4 KB vs. 2 MB pages
+                through disjoint address ranges, so page size is conveyed by the address alone.
+              </p>
+            </div>
+            <div className="motivation-card">
+              <h3>Conflict Side Channels</h3>
+              <p>
+                Although CPM targets reuse-based channels, the same MC merging logic can randomly
+                remap virtual pages to different sharing-only PPNs &mdash; cheaply lowering bandwidth
+                of conflict-based channels without OS-driven page migration.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Evaluation Section */}
       <div className="section-alt" id="evaluation">
         <div className="section">
           <h2>Evaluation</h2>
           <p className="section-intro">
-            We prototype SEAM on a real system with an FPGA-based CXL memory controller and a 32-core
-            Intel EMR Gold 6530 CPU, running a modified Linux kernel 5.10.235. This is the very first
-            real-system prototype of hardware protection against reuse side channels.
+            We prototype CPM on a high-end server with a 32-core Intel EMR Gold 6530 CPU and an
+            FPGA-based CXL memory controller (16 GB on-board), running a modified Linux kernel 5.10.235.
+            This is the very first real-system prototype of hardware protection against reuse-based
+            side channels. We evaluate across LLM inference (Llama3.2, Gemma3, Qwen2.5), DNN image
+            classification, TPC-H queries on SQLite, OpenSSL, SPEC CPU 2017, and PARSEC.
           </p>
 
-          <h3 style={{ color: '#1e3a5f', marginBottom: '0.5rem' }}>Security: Access Latency Distribution</h3>
+          <h3 style={{ color: '#1e3a5f', marginBottom: '0.5rem' }}>Security: Flush+Reload Across Six Scenarios</h3>
           <p style={{ color: '#4b5563' }}>
-            We measure the cumulative distribution of 100 million memory access latencies. Without SEAM,
-            &ldquo;With Sharing&rdquo; and &ldquo;Without Sharing&rdquo; show clearly separable latency peaks &mdash; revealing the
-            side channel. With SEAM, the two distributions become indistinguishable (KS test p-value = 0.83).
+            We run a publicly available Flush+Reload attack where the victim uses a secret index
+            (512 out of 1024 128B elements) to touch a shared array. We repeat the attack across
+            three sharing boundaries (containers, VMs via KSM, and bare-metal host in separate cgroups)
+            and two core placements (attacker and victim on the same physical core vs. different cores)
+            &mdash; six total scenarios. In every scenario, the attacker reliably recovers the correct
+            secret <em>except</em> when CPM is turned on.
+          </p>
+
+          <div className="attack-grid">
+            <div className="eval-item">
+              <img src="/security-attack-container-remote-core.png" alt="Container, different cores" />
+              <div className="label">Container, different cores</div>
+            </div>
+            <div className="eval-item">
+              <img src="/security-attack-vm-remote-core.png" alt="VM, different cores" />
+              <div className="label">VM, different cores</div>
+            </div>
+            <div className="eval-item">
+              <img src="/security-attack-host-remote-core.png" alt="Host, different cores" />
+              <div className="label">Host, different cores</div>
+            </div>
+            <div className="eval-item">
+              <img src="/security-attack-container-local-core.png" alt="Container, same core" />
+              <div className="label">Container, same core</div>
+            </div>
+            <div className="eval-item">
+              <img src="/security-attack-vm-local-core.png" alt="VM, same core" />
+              <div className="label">VM, same core</div>
+            </div>
+            <div className="eval-item">
+              <img src="/security-attack-host-local-core.png" alt="Host, same core" />
+              <div className="label">Host, same core</div>
+            </div>
+          </div>
+
+          <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>Security: Access Latency Distribution</h3>
+          <p style={{ color: '#4b5563' }}>
+            We measure the cumulative distribution of 100 million memory access latencies. Without CPM,
+            &ldquo;With Sharing&rdquo; and &ldquo;Without Sharing&rdquo; show clearly separable latency peaks &mdash; revealing
+            the reuse side channel. With CPM, the two distributions become indistinguishable
+            (Kolmogorov-Smirnov test p-value = 0.83).
           </p>
 
           <div className="eval-grid">
             <div className="eval-item">
-              <img src="/cdf_clean_no_seam.png" alt="CDF of access latency without SEAM" />
-              <div className="label">Without SEAM</div>
+              <img src="/cdf_clean_no_seam.png" alt="CDF of access latency without CPM" />
+              <div className="label">Without CPM</div>
               <div className="caption">
                 Two distinct peaks clearly separate &ldquo;With Sharing&rdquo; vs.
                 &ldquo;Without Sharing&rdquo; &mdash; the reuse-based side channel is exploitable.
               </div>
             </div>
             <div className="eval-item">
-              <img src="/cdf_clean_seam.png" alt="CDF of access latency with SEAM" />
-              <div className="label">With SEAM</div>
+              <img src="/cdf_clean_seam.png" alt="CDF of access latency with CPM" />
+              <div className="label">With CPM</div>
               <div className="caption">
                 The latency distributions become indistinguishable &mdash; the side channel
-                is completely eliminated.
+                is completely closed.
               </div>
             </div>
           </div>
 
-          <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>Performance Results</h3>
+          <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>Performance &amp; Memory Saving</h3>
           <p style={{ color: '#4b5563' }}>
-            We evaluate SEAM across DNN inference, TPC-H database queries, OpenSSL, SPEC CPU 2017,
-            and PARSEC benchmarks running in containers.
+            Compared to the deployed practice of turning off memory sharing, CPM restores sharing
+            <em> while</em> running faster on average, and dramatically raises VM density on a fixed
+            memory budget.
           </p>
 
           <div className="stats-row">
             <div className="stat-card">
-              <div className="stat-value">+3%</div>
+              <div className="stat-value">+2.2%</div>
               <div className="stat-label">
-                Avg. performance improvement over disabling memory sharing (current practice)
+                Avg. performance improvement over disabling memory sharing (today&apos;s cloud practice)
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">&lt;0.8%</div>
+              <div className="stat-value">&lt;2%</div>
               <div className="stat-label">
-                Avg. slowdown vs. an idealization of prior hardware defenses (while being far simpler)
+                Worst-case slowdown on real workloads vs. normal sharing; LLMs are the outlier at ~10%
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">1.3 GB</div>
+              <div className="stat-value">13 vs. 5</div>
               <div className="stat-label">
-                Avg. memory saved with 8 containers (out of 4.8 GB total footprint)
+                VMs co-located in 16 GB CXL memory: CPM vs. turning sharing off (LLM/DNN/TPC-H avg.)
               </div>
             </div>
             <div className="stat-card">
               <div className="stat-value">0.05%</div>
               <div className="stat-label">
-                Flush+Reload success rate with SEAM (= random guessing: 1/2048)
+                Flush+Reload success rate under CPM (= random guessing, 1/2048)
+              </div>
+            </div>
+          </div>
+
+          <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>Sensitivity: VM Density &amp; Sharing-only PPNs</h3>
+          <p style={{ color: '#4b5563' }}>
+            To stress VM density, we co-locate instances of LLM, DNN, and SQLite workloads on the
+            16 GB CXL memory. Turning off sharing caps the server at roughly 5 VMs on average;
+            CPM fits about 13 &mdash; a 2.6&times; increase &mdash; and scales by dynamically allocating
+            sharing-only PPNs (each saves 4 KB).
+          </p>
+
+          <div className="eval-grid">
+            <div className="eval-item">
+              <img src="/evaluation-more-vms.png" alt="Max VMs co-located on 16GB CXL" />
+              <div className="label">Max VMs co-located on 16 GB CXL</div>
+              <div className="caption">
+                Turning off sharing vs. CPM, across LLM, DNN, and TPC-H workloads.
+              </div>
+            </div>
+            <div className="eval-item">
+              <img src="/evaluation-sharing-only-ppns.png" alt="Sharing-only PPNs allocated" />
+              <div className="label">Sharing-only PPNs allocated</div>
+              <div className="caption">
+                Peak sharing-only PPN count at max VM density &mdash; each saves 4 KB of memory.
               </div>
             </div>
           </div>
@@ -408,7 +543,7 @@ export default function Home() {
       <div className="download-section" id="download">
         <h2>Download</h2>
         <p>
-          SEAM is implemented as a Linux kernel patch (500 lines of code on kernel 5.10.235)
+          CPM is implemented as a Linux kernel patch (~900 lines of code on kernel 5.10.235)
           with modifications confined to page allocation and deallocation paths.
         </p>
         <a href="/seam_v5.10.235.patch" download className="download-btn">
@@ -418,7 +553,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="footer">
-        SEAM: Secure and Practical Endpoint Address Merging
+        CPM: Non-intrusive Cache Side Channel Protection Near Memory &middot; MICRO 2026
       </footer>
     </>
   )

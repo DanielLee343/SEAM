@@ -1,5 +1,5 @@
 --- /home/lyuze/linux-5.10.235/arch/x86/include/asm/pgtable_types.h	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/arch/x86/include/asm/pgtable_types.h	2026-01-11 22:15:13.173589531 -0500
++++ ./arch/x86/include/asm/pgtable_types.h	2026-01-11 22:15:13.173589531 -0500
 @@ -23,6 +23,7 @@
  #define _PAGE_BIT_SOFTW2	10	/* " */
  #define _PAGE_BIT_SOFTW3	11	/* " */
@@ -25,60 +25,8 @@
  #define _PAGE_CHG_MASK	(_COMMON_PAGE_CHG_MASK | _PAGE_PAT)
  #define _HPAGE_CHG_MASK (_COMMON_PAGE_CHG_MASK | _PAGE_PSE | _PAGE_PAT_LARGE)
  
---- /home/lyuze/linux-5.10.235/arch/x86/mm/fault.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/arch/x86/mm/fault.c	2025-10-25 18:17:55.540070358 -0400
-@@ -515,7 +515,7 @@
- {
- 	if (!oops_may_print())
- 		return;
--
-+	unsigned long pfn;
- 	if (error_code & X86_PF_INSTR) {
- 		unsigned int level;
- 		pgd_t *pgd;
-@@ -525,23 +525,30 @@
- 		pgd += pgd_index(address);
- 
- 		pte = lookup_address_in_pgd(pgd, address, &level);
--
-+		if (pte && pte_present(*pte)) {
-+			pfn = pte_pfn(*pte);
-+		}
-+		
- 		if (pte && pte_present(*pte) && !pte_exec(*pte))
--			pr_crit("kernel tried to execute NX-protected page - exploit attempt? (uid: %d)\n",
--				from_kuid(&init_user_ns, current_uid()));
--		if (pte && pte_present(*pte) && pte_exec(*pte) &&
--				(pgd_flags(*pgd) & _PAGE_USER) &&
--				(__read_cr4() & X86_CR4_SMEP))
-+		pr_crit("kernel tried to execute NX-protected page - exploit attempt? (uid: %d)\n",
-+			from_kuid(&init_user_ns, current_uid()));
-+			if (pte && pte_present(*pte) && pte_exec(*pte) &&
-+			(pgd_flags(*pgd) & _PAGE_USER) &&
-+			(__read_cr4() & X86_CR4_SMEP))
- 			pr_crit("unable to execute userspace code (SMEP?) (uid: %d)\n",
- 				from_kuid(&init_user_ns, current_uid()));
--	}
--
--	if (address < PAGE_SIZE && !user_mode(regs))
-+			}
-+			
-+	if (address < PAGE_SIZE && !user_mode(regs)){
-+		pr_alert("Faulting PFN: %lu\n", pfn);
- 		pr_alert("BUG: kernel NULL pointer dereference, address: %px\n",
- 			(void *)address);
--	else
-+	}
-+	else {
-+		pr_alert("Faulting PFN: %lu\n", pfn);
- 		pr_alert("BUG: unable to handle page fault for address: %px\n",
- 			(void *)address);
-+	}
- 
- 	pr_alert("#PF: %s %s in %s mode\n",
- 		 (error_code & X86_PF_USER)  ? "user" : "supervisor",
 --- /home/lyuze/linux-5.10.235/drivers/nvdimm/nd.h	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/drivers/nvdimm/nd.h	2025-10-25 18:16:15.611621114 -0400
++++ ./drivers/nvdimm/nd.h	2025-10-25 18:16:15.611621114 -0400
 @@ -393,7 +393,7 @@
  		struct nd_namespace_common *ndns);
  #if IS_ENABLED(CONFIG_ND_CLAIM)
@@ -88,65 +36,8 @@
  int nvdimm_setup_pfn(struct nd_pfn *nd_pfn, struct dev_pagemap *pgmap);
  #else
  static inline int nvdimm_setup_pfn(struct nd_pfn *nd_pfn,
---- /dev/null	2026-02-07 21:35:18.696004439 -0500
-+++ /home/lyuze/linux_page_encoding/include/linux/encode_common.h	2026-02-07 20:59:13.413605803 -0500
-@@ -0,0 +1,44 @@
-+#ifndef _ENCODE_COMMON_H
-+#define _ENCODE_COMMON_H
-+
-+#include <linux/types.h>
-+#include <linux/atomic.h>
-+#include <linux/bits.h>
-+
-+/* PTE encoding bit definitions */
-+#define PFN_MASK GENMASK_ULL(51, 12)
-+#define _PAGE_ENCODE_BIT (1UL << 52)
-+
-+struct page_cgroup_tuple {
-+	u64 cgroup_id;
-+	int map_count;
-+};
-+
-+struct page_cgroup_triplet {
-+	u16 cgroup_id;    /* 2 bytes - truncated from u64 */
-+	u8 encode_idx;    /* 1 byte */
-+	u8 map_count;     /* 1 byte */
-+} __packed;           /* Total: 4 bytes */
-+
-+struct page_cgroup_vector {
-+	struct page_cgroup_triplet *data;
-+	int capacity;
-+	int size;
-+	spinlock_t lock;  /* Protects data, capacity, and size */
-+	struct rcu_head rcu;  /* For RCU-safe asynchronous freeing */
-+};
-+extern unsigned long base_pfn;
-+extern unsigned long num_cxl_page_entries;
-+extern unsigned long lmm_group_size; // the biggest power of 2 smaller than total number of supported codings, currently 15 -> 8
-+extern unsigned long end_cxl_pfn;
-+
-+/* Encoding control variables */
-+extern atomic_t seam_encode_enabled;
-+extern atomic_t num_file_coded;  /* Counter for file-backed page encoding (alloc_set_pte) */
-+extern atomic_t num_ksm_coded;   /* Counter for KSM anonymous page encoding (replace_page) */
-+
-+/* Helper functions */
-+struct task_struct;
-+u64 get_task_cgroup_id(struct task_struct *task);
-+
-+#endif
---- /home/lyuze/linux-5.10.235/include/linux/mm.h	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/include/linux/mm.h	2025-10-25 18:17:55.544070319 -0400
-@@ -2379,6 +2379,7 @@
- {
- 	ClearPageReserved(page);
- 	init_page_count(page);
-+	// init_page_usecount(page);
- 	__free_page(page);
- }
- 
 --- /home/lyuze/linux-5.10.235/include/linux/mm_types.h	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/include/linux/mm_types.h	2025-10-25 18:17:55.544070319 -0400
++++ ./include/linux/mm_types.h	2026-04-19 20:16:57.501517961 -0400
 @@ -15,6 +15,7 @@
  #include <linux/page-flags-layout.h>
  #include <linux/workqueue.h>
@@ -155,146 +46,27 @@
  
  #include <asm/mmu.h>
  
-@@ -199,6 +200,12 @@
+@@ -199,6 +200,7 @@
  
  	/* Usage count. *DO NOT USE DIRECTLY*. See page_ref.h */
  	atomic_t _refcount;
-+	// atomic_t _usecount;
 +	struct page_cgroup_vector *page_cgroup_vector;
-+	// u8 avail_bits;
-+	// struct mm_struct *last_mm;
-+	// pid_t last_pid;
-+	// int last_idx_bit_vec;
  
  #ifdef CONFIG_MEMCG
  	union {
---- /dev/null	2026-02-07 21:35:18.696004439 -0500
-+++ /home/lyuze/linux_page_encoding/include/linux/page_cgroup_vector.h	2026-02-07 20:13:42.287433858 -0500
-@@ -0,0 +1,14 @@
-+#ifndef _PAGE_CGROUP_VECTOR_H
-+#define _PAGE_CGROUP_VECTOR_H
-+#include <linux/types.h>
-+
-+void print_unfreed_cgroup_vector(void);
-+
-+/* V2 API with resizable vector and 8-bit avail_bits */
-+int init_page_cgroup_vector_v2(struct page_cgroup_vector **vec);
-+int try_inc_page_usecount_v2(struct page *page, unsigned long old_pfn,
-+			     u64 curr_cgroup_id, int *encode_idx);
-+int reset_page_usecount_v2(struct page *page, u64 curr_cgroup_id,
-+			   unsigned long pfn);
-+void free_page_cgroup_vector_v2(void);
-+#endif
---- /home/lyuze/linux-5.10.235/include/linux/page_ref.h	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/include/linux/page_ref.h	2025-10-25 18:17:55.544070319 -0400
-@@ -67,6 +67,11 @@
- 	return atomic_read(&page->_refcount);
- }
- 
-+// static inline int page_use_count(const struct page *page)
-+// {
-+// 	return atomic_read(&page->_usecount);
-+// }
-+
- static inline int page_count(struct page *page)
- {
- 	return atomic_read(&compound_head(page)->_refcount);
-@@ -79,6 +84,11 @@
- 		__page_ref_set(page, v);
- }
- 
-+// static inline void set_page_usecount(struct page *page, int v)
-+// {
-+// 	atomic_set(&page->_usecount, v);
-+// }
-+
- /*
-  * Setup the page count before being freed into the page allocator for
-  * the first time (boot or memory hotplug)
-@@ -88,6 +98,11 @@
- 	set_page_count(page, 1);
- }
- 
-+// static inline void init_page_usecount(struct page *page)
-+// {
-+// 	set_page_usecount(page, 0); // 0 or 1?
-+// }
-+
- static inline void page_ref_add(struct page *page, int nr)
- {
- 	atomic_add(nr, &page->_refcount);
-@@ -118,6 +133,11 @@
- 		__page_ref_mod(page, 1);
- }
- 
-+// static inline void page_usecount_inc(struct page *page)
-+// {
-+// 	atomic_inc(&page->_usecount);
-+// }
-+
- static inline void page_ref_dec(struct page *page)
- {
- 	atomic_dec(&page->_refcount);
-@@ -125,6 +145,11 @@
- 		__page_ref_mod(page, -1);
- }
- 
-+// static inline void page_usecount_dec(struct page *page)
-+// {
-+// 	atomic_dec(&page->_usecount);
-+// }
-+
- static inline int page_ref_sub_and_test(struct page *page, int nr)
- {
- 	int ret = atomic_sub_and_test(nr, &page->_refcount);
-@@ -189,4 +214,4 @@
- 		__page_ref_unfreeze(page, count);
- }
- 
--#endif
-+#endif
-\ No newline at end of file
 --- /home/lyuze/linux-5.10.235/include/linux/rmap.h	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/include/linux/rmap.h	2025-10-25 18:16:16.387390275 -0400
-@@ -275,7 +275,7 @@
- 	struct anon_vma *(*anon_lock)(struct page *page);
- 	bool (*invalid_vma)(struct vm_area_struct *vma, void *arg);
- };
--
-+void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc, bool locked);
- void rmap_walk(struct page *page, struct rmap_walk_control *rwc);
- void rmap_walk_locked(struct page *page, struct rmap_walk_control *rwc);
++++ ./include/linux/rmap.h	2026-03-24 21:22:02.973412767 -0400
+@@ -204,6 +204,8 @@
+ #define PVMW_SYNC		(1 << 0)
+ /* Look for migarion entries rather than present PTEs */
+ #define PVMW_MIGRATION		(1 << 1)
++/* Decode SEAM-encoded PTEs in check_pte (only needed for try_to_unmap) */
++#define PVMW_SEAM_DECODE	(1 << 2)
  
---- /home/lyuze/linux-5.10.235/mm/Makefile	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/Makefile	2026-02-07 20:13:32.354556245 -0500
-@@ -61,6 +61,7 @@
- obj-y += page-alloc.o
- obj-y += init-mm.o
- obj-y += memblock.o
-+obj-y += page_cgroup_vector_v2.o
- 
- ifdef CONFIG_MMU
- 	obj-$(CONFIG_ADVISE_SYSCALLS)	+= madvise.o
---- /home/lyuze/linux-5.10.235/mm/filemap.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/filemap.c	2025-10-25 18:17:55.544070319 -0400
-@@ -43,6 +43,7 @@
- #include <linux/ramfs.h>
- #include <linux/page_idle.h>
- #include "internal.h"
-+#include <linux/debugfs.h>
- 
- #define CREATE_TRACE_POINTS
- #include <trace/events/filemap.h>
-@@ -2838,6 +2839,7 @@
- }
- EXPORT_SYMBOL(filemap_fault);
- 
-+
- void filemap_map_pages(struct vm_fault *vmf,
- 		pgoff_t start_pgoff, pgoff_t end_pgoff)
- {
+ struct page_vma_mapped_walk {
+ 	struct page *page;
 --- /home/lyuze/linux-5.10.235/mm/khugepaged.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/khugepaged.c	2026-01-04 22:31:06.567340823 -0500
++++ ./mm/khugepaged.c	2026-01-04 22:31:06.567340823 -0500
 @@ -22,6 +22,7 @@
  #include <asm/tlb.h>
  #include <asm/pgalloc.h>
@@ -327,8 +99,8 @@
  		if (unlikely(!page)) {
  			result = SCAN_PAGE_NULL;
 --- /home/lyuze/linux-5.10.235/mm/ksm.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/ksm.c	2026-02-07 21:17:22.710634324 -0500
-@@ -38,8 +38,11 @@
++++ ./mm/ksm.c	2026-04-19 01:10:46.115081764 -0400
+@@ -38,8 +38,13 @@
  #include <linux/freezer.h>
  #include <linux/oom.h>
  #include <linux/numa.h>
@@ -337,10 +109,44 @@
  
  #include <asm/tlbflush.h>
 +#include <asm/pgtable.h>
++#include <asm/special_insns.h> /* for clwb */
++#include <asm/cacheflush.h>    /* for clflush_cache_range */
  #include "internal.h"
  
  #ifdef CONFIG_NUMA
-@@ -1167,6 +1170,57 @@
+@@ -1127,6 +1132,7 @@
+ 	pte_t newpte;
+ 	spinlock_t *ptl;
+ 	unsigned long addr;
++	unsigned long seam_enc_pfn = 0;  /* saved for CLFLUSH after PTL release */
+ 	int err = -EFAULT;
+ 	struct mmu_notifier_range range;
+ 
+@@ -1138,6 +1144,23 @@
+ 	if (!pmd)
+ 		goto out;
+ 
++	/* Pre-allocate page_cgroup_vector before PTL using GFP_NOWAIT.
++	 * GFP_NOWAIT tries harder than GFP_ATOMIC (dips into watermark
++	 * reserves) but won't sleep or trigger reclaim, so ksmd never
++	 * stalls — critical for KSM merge throughput under CXL pressure. */
++	if (unlikely(atomic_read(&seam_encode_enabled) == 1) &&
++	    !rcu_access_pointer(kpage->page_cgroup_vector)) {
++		struct page_cgroup_vector *pre_vec = NULL;
++		if (init_page_cgroup_vector_v2_node(&pre_vec, GFP_NOWAIT, 0) == 0) {
++			if (cmpxchg(&kpage->page_cgroup_vector, NULL, pre_vec) != NULL) {
++				kfree(pre_vec->data);
++				kfree(pre_vec);
++			} else {
++				smp_mb();
++			}
++		}
++	}
++
+ 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, vma, mm, addr,
+ 				addr + PAGE_SIZE);
+ 	mmu_notifier_invalidate_range_start(&range);
+@@ -1167,6 +1190,44 @@
  		 */
  		dec_mm_counter(mm, MM_ANONPAGES);
  	}
@@ -358,39 +164,26 @@
 +			goto skip_encoding;
 +		}
 +
-+		// Only encode pages in CXL memory range
-+		if (ksm_pfn < base_pfn) {
-+			// pr_info_ratelimited("KSM: skip encoding ksm_pfn=0x%lx < base_pfn=0x%lx\n", ksm_pfn, base_pfn);
++		// Only encode pages in encodable CXL range (last 0.5 GB unencodable)
++		if (ksm_pfn < base_pfn || ksm_pfn >= base_pfn + num_cxl_page_entries) {
 +			goto skip_encoding;
 +		}
-+
-+		if (!rcu_access_pointer(kpage->page_cgroup_vector)) {
-+            struct page_cgroup_vector *new_vec = NULL;
-+            if (init_page_cgroup_vector_v2(&new_vec) == 0) {
-+                if (cmpxchg(&kpage->page_cgroup_vector, NULL, new_vec) != NULL) {
-+                    kfree(new_vec->data);
-+                    kfree(new_vec);
-+                } else {
-+                    smp_mb();
-+                }
-+            }
-+        }
 +        curr_usecount = try_inc_page_usecount_v2(kpage, ksm_pfn, cgroup_id, &encode_idx);
-+        // pr_info_ratelimited("KSM: ksm_pfn=0x%lx cgroup=%llu usecount=%d encode_idx=%d\n",
-+        //                     ksm_pfn, cgroup_id, curr_usecount, encode_idx);
 +        /* Encode when usecount >= 1 because the original KSM page owner is NOT
 +         * in the vector (their page was promoted to KSM, not merged via replace_page).
 +         * So the first entry in the vector is actually the second user. */
 +        if(curr_usecount >= 1 && encode_idx != -1) {
-+            // Encode the PFN using your formula
-+            unsigned long enc_pfn = (ksm_pfn - base_pfn) * lmm_group_size + end_cxl_pfn + encode_idx;
-+            unsigned long old_val = pte_val(newpte);
-+            unsigned long new_val = (old_val & ~PFN_MASK) | (enc_pfn << PAGE_SHIFT);
++            unsigned long old_val, new_val;
++
++            seam_enc_pfn = (ksm_pfn - base_pfn) * lmm_group_size + end_cxl_pfn + encode_idx;
++            old_val = pte_val(newpte);
++            new_val = (old_val & ~PFN_MASK) | (seam_enc_pfn << PAGE_SHIFT);
 +            new_val |= _PAGE_ENCODE_BIT;
 +            newpte = __pte(new_val);
 +
 +            atomic_inc(&num_ksm_coded);
-+            // pr_info_ratelimited("KSM: ENCODED! enc_pfn=0x%lx\n", enc_pfn);
++        } else {
++            atomic_inc(&num_ksm_skipped);
 +        }
 +skip_encoding:
 +		;
@@ -398,270 +191,76 @@
  
  	flush_cache_page(vma, addr, pte_pfn(*ptep));
  	/*
+@@ -1184,6 +1245,38 @@
+ 	put_page(page);
+ 
+ 	pte_unmap_unlock(ptep, ptl);
++
++	/* Issue 1 (CLWB): Write back kpage's real PFN cache lines to memory.
++	 * Done after PTL release — CLWB on CXL memory is slow (64 cache-line
++	 * writebacks) and holding PTL blocks KSM merging throughput, preventing
++	 * it from keeping up with VM spawning under heavy load.
++	 * Safe because the KSM page is read-only (COW); the faulting process
++	 * cannot modify it, so the writeback remains valid. */
++	if (seam_enc_pfn >= end_cxl_pfn) {
++		char *wbaddr = (char *)page_address(kpage);
++		int i;
++		for (i = 0; i < 64; i++) {
++			clwb(wbaddr);
++			wbaddr += 64;
++		}
++		asm volatile("sfence" ::: "memory");
++
++		/* Issue 2 (CLFLUSH): Flush stale cache lines for the encoded PFN.
++		 * RCU protects encoded_range_base from concurrent iounmap
++		 * by seam_encode_write(0). */
++		rcu_read_lock();
++		{
++			void __iomem *base = READ_ONCE(encoded_range_base);
++			if (base) {
++				void *enc_kaddr = base +
++					((seam_enc_pfn << PAGE_SHIFT) -
++					 encoded_range_phys_start);
++				clflush_cache_range(enc_kaddr, PAGE_SIZE);
++			}
++		}
++		rcu_read_unlock();
++	}
++
+ 	err = 0;
+ out_mn:
+ 	mmu_notifier_invalidate_range_end(&range);
+--- /home/lyuze/linux-5.10.235/mm/Makefile	2025-03-13 07:47:45.000000000 -0400
++++ ./mm/Makefile	2026-02-11 12:56:30.340275165 -0500
+@@ -61,6 +61,7 @@
+ obj-y += page-alloc.o
+ obj-y += init-mm.o
+ obj-y += memblock.o
++obj-y += page_cgroup_vector.o
+ 
+ ifdef CONFIG_MMU
+ 	obj-$(CONFIG_ADVISE_SYSCALLS)	+= madvise.o
 --- /home/lyuze/linux-5.10.235/mm/memory.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/memory.c	2026-02-07 22:17:31.291594152 -0500
-@@ -82,6 +82,11 @@
++++ ./mm/memory.c	2026-04-19 20:26:10.076586339 -0400
+@@ -82,6 +82,8 @@
  #include <linux/uaccess.h>
  #include <asm/tlb.h>
  #include <asm/tlbflush.h>
-+ #include <linux/sched.h>
-+ #include <linux/sched/signal.h>
-+ #include <linux/page_cgroup_vector.h>
-+ #include <linux/encode_common.h>
-+ #include <asm/special_insns.h> // for clwb
++#include <linux/page_cgroup_vector.h>
++#include <linux/encode_common.h>
  
  #include "pgalloc-track.h"
  #include "internal.h"
-@@ -98,7 +103,12 @@
- struct page *mem_map;
- EXPORT_SYMBOL(mem_map);
- #endif
-+unsigned long cxl_real_addr_end = 143130624; // 546 GB
- 
-+#define PFN_MASK GENMASK_ULL(51, 12)
-+#define _PAGE_ENCODE_BIT (1UL << 52)
-+#define BIT63_MASK (1UL << 63)
-+#define IS_BIT63_SET(val) (((val) & BIT63_MASK) != 0)
- /*
-  * A number of key systems in x86 including ioremap() rely on the assumption
-  * that high_memory defines the upper bound on direct map memory, then end
-@@ -549,6 +559,25 @@
- 	add_taint(TAINT_BAD_PAGE, LOCKDEP_NOW_UNRELIABLE);
- }
- 
-+u64 get_task_cgroup_id(struct task_struct *task)
-+{
-+	if(!task)
-+	{
-+		pr_err("task is NULL!!\n");
-+		return 0;
-+	}
-+    struct cgroup *cgrp;
-+    u64 id = 0;
-+
-+    rcu_read_lock();
-+    cgrp = task_dfl_cgroup(task);
-+    if (cgrp && cgrp->kn)
-+        id = cgrp->kn->id;
-+    rcu_read_unlock();
-+
-+    return id;
-+}
-+
- /*
-  * vm_normal_page -- This function gets the "struct page" associated with a pte.
-  *
-@@ -596,6 +625,20 @@
+@@ -594,7 +596,7 @@
+ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
+ 			    pte_t pte)
  {
- 	unsigned long pfn = pte_pfn(pte);
+-	unsigned long pfn = pte_pfn(pte);
++	unsigned long pfn = seam_decode_pfn(pte);
  
-+	 /* Decode encoded PTEs to get the real PFN (no usecount changes here).
-+	  * Always decode if encode bit is set, regardless of seam_encode_enabled,
-+	  * so that cleanup/unmap operations work after encoding is disabled. */
-+	 if ((pte_val(pte) & _PAGE_ENCODE_BIT) && pfn >= end_cxl_pfn) {
-+		 unsigned long encoded_pfn = pfn;
-+		 int decoded_encode_idx = (encoded_pfn - end_cxl_pfn) % lmm_group_size;
-+		 unsigned long orig_pfn = (encoded_pfn - end_cxl_pfn - decoded_encode_idx) / lmm_group_size + base_pfn;
-+		 /* Sanity check: only use decoded PFN if it's valid and in CXL range */
-+		 if (orig_pfn >= base_pfn && orig_pfn < end_cxl_pfn) { // will definitely get in
-+			 pfn = orig_pfn;
-+		 }
-+		 /* If invalid, keep original pfn - will be handled by later checks */
-+	 }
-+
  	if (IS_ENABLED(CONFIG_ARCH_HAS_PTE_SPECIAL)) {
  		if (likely(!pte_special(pte)))
- 			goto check_pfn;
-@@ -646,6 +689,188 @@
- 	return pfn_to_page(pfn);
- }
- 
-+static struct dentry *debug_dir;
-+static bool flush_orig_ppn_once;
-+static bool only_flush;
-+
-+atomic_t seam_encode_enabled = ATOMIC_INIT(0);
-+atomic_t num_file_coded = ATOMIC_INIT(0);  /* Counter for file-backed page encoding */
-+atomic_t num_ksm_coded = ATOMIC_INIT(0);   /* Counter for KSM anonymous page encoding */
-+
-+/* ioremap'd mapping covering the encoded PFN range (146GB+) for clflush.
-+ * With memmap=240G$146G the direct map doesn't cover the reserved region,
-+ * so we create our own cached mapping at boot. */
-+static void __iomem *encoded_range_base;
-+static unsigned long encoded_range_phys_start;
-+
-+static bool seam_peek_coded_page;
-+
-+static ssize_t seam_encode_write(struct file *file, const char __user *buf,
-+                                 size_t count, loff_t *ppos)
-+{
-+    int tmp;
-+    if (kstrtoint_from_user(buf, count, 0, &tmp))
-+        return -EINVAL;
-+
-+    if (tmp == 0 || tmp == 1) {
-+        /* Create a cached ioremap for the encoded PFN range so clflush works
-+         * even when the direct map doesn't cover it (memmap=240G$146G). */
-+        encoded_range_phys_start = (unsigned long)end_cxl_pfn << PAGE_SHIFT;
-+        {
-+            unsigned long total_encoded_pages = (unsigned long)num_cxl_page_entries * lmm_group_size;
-+            unsigned long mapping_size = total_encoded_pages << PAGE_SHIFT;
-+
-+            encoded_range_base = ioremap_cache(encoded_range_phys_start, mapping_size);
-+            if (encoded_range_base)
-+                pr_info("seam: ioremap_cache 0x%lx size %lu MB at %px\n",
-+                        encoded_range_phys_start, mapping_size >> 20, encoded_range_base);
-+            else
-+                pr_warn("seam: failed to ioremap_cache encoded range\n");
-+        }
-+        atomic_set(&seam_encode_enabled, tmp);
-+        pr_info("resetting all cgroup_vector (encode=%d)\n", tmp);
-+        free_page_cgroup_vector_v2();
-+        atomic_set(&num_file_coded, 0);
-+        atomic_set(&num_ksm_coded, 0);
-+        return count;
-+    } else {
-+        pr_info("unsupported value: %d\n", tmp);
-+        return -EINVAL;
-+    }
-+}
-+
-+static ssize_t seam_encode_read(struct file *file, char __user *buf,
-+                                size_t count, loff_t *ppos)
-+{
-+    char val_buf[16];
-+    int len = scnprintf(val_buf, sizeof(val_buf), "%d\n",
-+                        atomic_read(&seam_encode_enabled));
-+    return simple_read_from_buffer(buf, count, ppos, val_buf, len);
-+}
-+
-+static const struct file_operations seam_encode_fops = {
-+    .owner = THIS_MODULE,
-+    .read  = seam_encode_read,
-+    .write = seam_encode_write,
-+};
-+
-+static ssize_t seam_peek_write(struct file *file, const char __user *buf,
-+                               size_t count, loff_t *ppos)
-+{
-+    int tmp;
-+    if (kstrtoint_from_user(buf, count, 0, &tmp))
-+        return -EINVAL;
-+
-+    if (tmp == 0) {
-+        seam_peek_coded_page = false;
-+        pr_info("unfreed cgroup_vector\n");
-+        print_unfreed_cgroup_vector();
-+    } else if (tmp == 1) {
-+        seam_peek_coded_page = true;
-+        pr_info("num_file_coded: %d, num_ksm_coded: %d\n",
-+                atomic_read(&num_file_coded), atomic_read(&num_ksm_coded));
-+    } else {
-+        pr_info("unsupported value: %d\n", tmp);
-+        return -EINVAL;
-+    }
-+    return count;
-+}
-+
-+static ssize_t seam_peek_read(struct file *file, char __user *buf,
-+                              size_t count, loff_t *ppos)
-+{
-+    char val_buf[16];
-+    int len = scnprintf(val_buf, sizeof(val_buf), "%d\n", seam_peek_coded_page);
-+    return simple_read_from_buffer(buf, count, ppos, val_buf, len);
-+}
-+
-+static const struct file_operations seam_peek_fops = {
-+    .owner = THIS_MODULE,
-+    .read  = seam_peek_read,
-+    .write = seam_peek_write,
-+};
-+
-+static struct dentry *get_seam_debug_dir(void)
-+{
-+    if (debug_dir && !IS_ERR(debug_dir))
-+        return debug_dir;
-+
-+    debug_dir = debugfs_lookup("seam_debug", NULL);
-+    if (debug_dir)
-+        return debug_dir;
-+
-+    debug_dir = debugfs_create_dir("seam_debug", NULL);
-+    return debug_dir;  // may be NULL if CONFIG_DEBUG_FS=n; caller handles
-+}
-+
-+static int __init init_seam_debugfs(void)
-+{
-+    struct dentry *dir = get_seam_debug_dir();
-+
-+    if (IS_ERR(dir))
-+        return PTR_ERR(dir);
-+    if (!dir)
-+        return 0;  // debugfs disabled
-+
-+    debugfs_create_file("encode_enable", 0644, dir, NULL, &seam_encode_fops);
-+    debugfs_create_file("peek_stats",   0644, dir, NULL, &seam_peek_fops);
-+
-+    /* real bools must pass bool*; this one is fine */
-+    debugfs_create_bool("flush_orig_ppn_once", 0644, dir, &flush_orig_ppn_once);
-+    debugfs_create_bool("only_flush",  0644, dir, &only_flush);
-+
-+    return 0;
-+}
-+late_initcall(init_seam_debugfs);
-+
-+/*
-+ * vm_normal_page_seam - decode encoded PTE, clean up usecount, then delegate
-+ * to vm_normal_page() for standard validation.
-+ *
-+ * @out_pte: if non-NULL, the decoded PTE is written back (unmap path).
-+ *           Also controls whether non-encoded CXL pages get usecount cleanup.
-+ *           Pass NULL for the COW/readonly path.
-+ */
-+static struct page *vm_normal_page_seam(struct vm_area_struct *vma,
-+					unsigned long addr, pte_t pte,
-+					volatile pte_t *out_pte)
-+{
-+    unsigned long pfn = pte_pfn(pte);
-+
-+    /* Always decode if encode bit is set, regardless of seam_encode_enabled,
-+     * so that cleanup/unmap operations work after encoding is disabled. */
-+    if ((pte_val(pte) & _PAGE_ENCODE_BIT) && pfn >= end_cxl_pfn) {
-+        unsigned long encoded_pfn = pfn;
-+        int decoded_encode_idx = (encoded_pfn - end_cxl_pfn) % lmm_group_size;
-+        unsigned long orig_pfn = (encoded_pfn - end_cxl_pfn - decoded_encode_idx) / lmm_group_size + base_pfn;
-+        if (orig_pfn >= base_pfn && orig_pfn < end_cxl_pfn) {
-+            pfn = orig_pfn;
-+            struct page *page = pfn_to_page(pfn);
-+            if (PageKsm(page))
-+                atomic_dec(&num_ksm_coded);
-+            else
-+                atomic_dec(&num_file_coded);
-+            unsigned long mask = ~(PFN_MASK | _PAGE_ENCODE_BIT);
-+            unsigned long old_val = pte_val(pte);
-+            unsigned long new_val = (old_val & mask) | (pfn << PAGE_SHIFT);
-+            pte = __pte(new_val);
-+            if (out_pte)
-+                *out_pte = pte;
-+            u64 cgroup_id = get_task_cgroup_id(current);
-+            reset_page_usecount_v2(page, cgroup_id, pfn);
-+        }
-+    } else if (out_pte && pfn >= base_pfn && pfn < end_cxl_pfn) {
-+        /* Non-encoded CXL page - usecount cleanup only on unmap path */
-+        struct page *page = pfn_to_page(pfn);
-+        if (page->page_cgroup_vector) {
-+            u64 cgroup_id = get_task_cgroup_id(current);
-+            reset_page_usecount_v2(page, cgroup_id, pfn);
-+        }
-+    }
-+
-+    return vm_normal_page(vma, addr, pte);
-+}
-+
- #ifdef CONFIG_TRANSPARENT_HUGEPAGE
- struct page *vm_normal_page_pmd(struct vm_area_struct *vma, unsigned long addr,
- 				pmd_t pmd)
-@@ -1247,7 +1472,7 @@
+@@ -1247,7 +1249,7 @@
  	flush_tlb_batched_pending(mm);
  	arch_enter_lazy_mmu_mode();
  	do {
@@ -670,19 +269,18 @@
  		if (pte_none(ptent))
  			continue;
  
-@@ -1256,8 +1481,9 @@
+@@ -1256,8 +1258,8 @@
  
  		if (pte_present(ptent)) {
  			struct page *page;
 -
 -			page = vm_normal_page(vma, addr, ptent);
 +		    //  page = vm_normal_page(vma, addr, ptent);
-+		    page = vm_normal_page_seam(vma, addr, ptent, &ptent);
-+			*pte = ptent;
++		    page = vm_normal_page_seam(vma, addr, ptent, NULL);
  			if (unlikely(details) && page) {
  				/*
  				 * unmap_shared_mapping_pages() wants to
-@@ -2891,7 +3117,7 @@
+@@ -2891,7 +2893,7 @@
   */
  static vm_fault_t wp_page_copy(struct vm_fault *vmf)
  {
@@ -691,7 +289,7 @@
  	struct mm_struct *mm = vma->vm_mm;
  	struct page *old_page = vmf->page;
  	struct page *new_page = NULL;
-@@ -2943,6 +3169,7 @@
+@@ -2943,6 +2945,7 @@
  	 */
  	vmf->pte = pte_offset_map_lock(mm, vmf->pmd, vmf->address, &vmf->ptl);
  	if (likely(pte_same(*vmf->pte, vmf->orig_pte))) {
@@ -699,7 +297,7 @@
  		if (old_page) {
  			if (!PageAnon(old_page)) {
  				dec_mm_counter_fast(mm,
-@@ -3162,7 +3389,8 @@
+@@ -3162,7 +3165,8 @@
  		     mm_tlb_flush_pending(vmf->vma->vm_mm)))
  		flush_tlb_page(vmf->vma, vmf->address);
  
@@ -709,242 +307,172 @@
  	if (!vmf->page) {
  		/*
  		 * VM_MIXEDMAP !pfn_valid() case, or VM_SOFTDIRTY clear on a
-@@ -3891,6 +4119,89 @@
+@@ -3891,6 +3895,7 @@
  }
  #endif
  
 +
-+static pte_t encode_curr_page(pte_t orig_pte, int *target_idx_bit_vec, int encode_idx, unsigned long *new_pfn)
-+{
-+    unsigned long old_val = pte_val(orig_pte);
-+    unsigned long old_pfn = (old_val & PFN_MASK) >> PAGE_SHIFT;
-+    unsigned long enc_pfn;
-+	// enc_pfn = get_vacant_pfn(old_pfn, target_idx_bit_vec);
-+	// enc_pfn = (num_cxl_page_entries * (encode_idx + 1) + old_pfn); // old design -> same cache data resides on same set
-+	enc_pfn = (old_pfn - base_pfn) * lmm_group_size + end_cxl_pfn + encode_idx; // new design -> same cache data resides on different sets
-+	// pr_info("CURR: encode_idx: %d, enc_pfn: %lu\n", encode_idx, enc_pfn);
-+	// enc_pfn = old_pfn; // comment this out for bare metal test
-+	*new_pfn = enc_pfn;
-+	// print_bit_vec(old_pfn);
-+	// if(enc_pfn == old_pfn){
-+	//	pr_info("coing anything\n");
-+	//	return orig_pte;
-+	// }
-+
-+    unsigned long new_val = (old_val & ~PFN_MASK) | (enc_pfn << PAGE_SHIFT);
-+    new_val |= _PAGE_ENCODE_BIT;
-+    return __pte(new_val);
-+}
-+
-+int target_idx_bit_vec = 0;
-+// void print_cgroup_info(struct task_struct *task)
-+// {
-+//     struct cgroup_subsys_state *css;
-+//     struct kernfs_node *kn;
-+
-+//     if (!task) {
-+//         pr_info("No task provided.\n");
-+//         return;
-+//     }
-+
-+//     rcu_read_lock();
-+
-+//     css = task_get_css(task, &cpu_cgrp_subsys);
-+//     if (!css) {
-+//         pr_info("No css\n");
-+//         goto out;
-+//     }
-+
-+//     if (!css->cgroup) {
-+//         pr_info("No cgroup\n");
-+//         goto out;
-+//     }
-+
-+//     kn = css->cgroup->kn;
-+//     if (!kn) {
-+//         pr_info("No kernfs_node\n");
-+//         goto out;
-+//     }
-+
-+//     pr_info("task: %s pid: %d cgroup_id: %llu\n", task->comm, task->pid, kn->id);
-+
-+// out:
-+//     rcu_read_unlock();
-+// }
-+static inline void sfence(void)
-+{
-+    asm volatile("sfence" ::: "memory");
-+}
-+static inline void flush_page_with_clwb(void *page_addr)
-+ {
-+     char *addr = (char *)page_addr;
-+
-+     // Most x86 systems use 64-byte cache lines
-+     // if (likely(boot_cpu_data.x86_clflush_size == 64)) {
-+         // Unrolled for 64-byte cache lines (64 iterations)
-+         int i = 0;
-+         for (; i < 64; i++) {
-+             clwb(addr);
-+             addr += 64;
-+         }
-+     // } else {
-+     //     // Fallback for other cache line sizes
-+     //     const unsigned long cache_line = boot_cpu_data.x86_clflush_size;
-+     //     unsigned long end = (unsigned long)addr + PAGE_SIZE;
-+     //     for (; (unsigned long)addr < end; addr += cache_line)
-+     //         clwb(addr);
-+     // }
-+     sfence();
-+ }
  /**
   * alloc_set_pte - setup new PTE entry for given page and add reverse page
   * mapping. If needed, the function allocates page table or use pre-allocated.
-@@ -3945,13 +4256,120 @@
+@@ -3945,11 +3950,79 @@
  		inc_mm_counter_fast(vma->vm_mm, mm_counter_file(page));
  		page_add_file_rmap(page, false);
  	}
 -	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
-+	// set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
 +	if (unlikely(atomic_read(&seam_encode_enabled) == 1) && !write) {
-+	unsigned long new_pfn = 0;
-+	int curr_usecount = 0;
-+		// || (vma->vm_flags & VM_SHARED)
-+		// && !IS_BIT63_SET(pte_val(entry))
-+		const char *comm = current->comm;
-+		if (strcmp(comm, "sudo") == 0 ||
-+			strcmp(comm, "bash") == 0 ||
-+			strcmp(comm, "sh") == 0 ||
-+			strcmp(comm, "tee") == 0 ||
-+			strcmp(comm, "time") == 0 ||
-+			strcmp(comm, "sshd") == 0 ||
-+			strcmp(comm, "gdb") == 0 ||
-+			strcmp(comm, "nohup") == 0 ||
-+			strcmp(comm, "perf") == 0 ||
-+			strncmp(comm, "system", 6) == 0 ||
-+			strncmp(comm, "xinw", 4) == 0 ||
-+			strncmp(comm, "apt", 3) == 0 ||
-+			strncmp(comm, "(udev", 5) == 0) {
-+			// pr_info("Skipping system daemon: %s\n", comm);
-+			goto skip_ppn_enc;
-+		}
-+		if(vmf->address != 93824992243712){
-+			struct task_struct *task = current;
-+			// struct task_struct *task1 = find_task_from_mm(vma->vm_mm);
-+			// pr_info("DUring allocation: task: %p, task1: %p\n", task, task1); // these are the same
++		unsigned long new_pfn = 0;
++		u64 cgroup_id = get_task_cgroup_id(current);
++		unsigned long pfn = page_to_pfn(page);
++		int encode_idx = -1;
++		int curr_usecount;
 +
-+			u64 cgroup_id = get_task_cgroup_id(task);
-+			unsigned long pfn = page_to_pfn(page);
++		/* Lock-free atomic initialization using RCU-safe cmpxchg */
++		if (!rcu_access_pointer(page->page_cgroup_vector)) {
++			struct page_cgroup_vector *new_vec = NULL;
 +
-+			/* Lock-free atomic initialization using RCU-safe cmpxchg */
-+			if(!rcu_access_pointer(page->page_cgroup_vector)){
-+				struct page_cgroup_vector *new_vec = NULL;
-+
-+				/* Allocate outside of any locks */
-+				if(init_page_cgroup_vector_v2(&new_vec) != 0){
-+					pr_err("Failed to init page_cgroup_vector_v2\n");
-+					goto skip_ppn_enc;
-+				}
- 
-+				/* Atomically set the vector pointer if still NULL (RCU-safe) */
-+				if(cmpxchg(&page->page_cgroup_vector, NULL, new_vec) != NULL) {
-+					/* Another thread won the race, free our allocation */
-+					kfree(new_vec->data);
-+					kfree(new_vec);
-+				} else {
-+					/* We won - ensure pointer is visible to all CPUs */
-+					smp_mb();
-+				}
-+			}
-+			int encode_idx = -1;
-+			curr_usecount = try_inc_page_usecount_v2(page, pfn, cgroup_id, &encode_idx);
-+			// pr_info("map: pid: %d, name: %s, address: %lx, pfn: %lu, page: %px, usecount: %d, pte: 0x%lx\n", pid, comm, vmf->address, pfn, page, page_use_count(page), pte_val(entry));
-+			if(curr_usecount <= 1 || encode_idx == -1) // no need to do encode, or exhausted the available encoding slots
++			if (init_page_cgroup_vector_v2(&new_vec) != 0) {
++				pr_err("Failed to init page_cgroup_vector_v2\n");
 +				goto skip_ppn_enc;
-+			if (curr_usecount >= 2) {
-+				if(pfn > base_pfn)
-+					atomic_inc(&num_file_coded);
-+				entry = encode_curr_page(entry, &target_idx_bit_vec, encode_idx, &new_pfn);
++			}
++			if (cmpxchg(&page->page_cgroup_vector, NULL, new_vec) != NULL) {
++				kfree(new_vec->data);
++				kfree(new_vec);
++			} else {
++				smp_mb();
 +			}
 +		}
++
++		curr_usecount = try_inc_page_usecount_v2(page, pfn, cgroup_id, &encode_idx);
++		if (curr_usecount <= 1 || encode_idx == -1)
++			goto skip_ppn_enc;
++
++		if (PageKsm(page))
++			atomic_inc(&num_ksm_coded);
++		else
++			atomic_inc(&num_file_coded);
++		entry = seam_encode_pte(entry, encode_idx, &new_pfn);
++
 +		set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
-+        if (unlikely(atomic_read(&seam_encode_enabled) == 1)) {
-+            if (!flush_orig_ppn_once || (flush_orig_ppn_once && curr_usecount == 2)) {
-+                    // transition from non-shared to shared, issue clwb
-+                    void *orig_pfn_addr = kmap(page);
-+                    // clflush_cache_range(orig_pfn_addr, PAGE_SIZE);
-+                    flush_page_with_clwb(orig_pfn_addr);
-+                    kunmap(page);
-+            }
-+            if (new_pfn >= end_cxl_pfn && encoded_range_base) {
-+                void *enc_kaddr = encoded_range_base +
-+                    ((new_pfn << PAGE_SHIFT) - encoded_range_phys_start);
-+                /* Test 1: does a read through the ioremap mapping work? */
-+                // volatile char tmp = *(volatile char *)enc_kaddr;
-+                // (void)tmp;
-+                // pr_info("read succeeded\n");
++		if (new_pfn >= end_cxl_pfn) {
++			/* Release PTL before cache maintenance — CLWB on CXL memory
++			 * is slow (64 cache-line write-backs) and holding PTL blocks
++			 * smaps walkers and concurrent page faults on the same PTE page,
++			 * causing soft lockups under heavy container workloads. */
++			update_mmu_cache(vma, vmf->address, vmf->pte);
++			pte_unmap_unlock(vmf->pte, vmf->ptl);
 +
-+                /* Test 2: does a single clflushopt hang? */
-+                // clflushopt(enc_kaddr);
-+                // asm volatile("sfence" ::: "memory");
-+                // pr_info("flush succeeded\n");
++			/* CLWB on real PPN — outside PTL.  Safe because the faulting
++			 * process cannot access the page until alloc_set_pte returns. */
++			{
++				void *orig_pfn_addr = kmap(page);
++				seam_flush_page_with_clwb(orig_pfn_addr);
++				kunmap(page);
++			}
+ 
++			/* CLFLUSH on encoded PPN — RCU protects encoded_range_base
++			 * from being iounmap'd concurrently by seam_encode_write(0). */
++			rcu_read_lock();
++			{
++				void __iomem *base = READ_ONCE(encoded_range_base);
++				if (base) {
++					void *enc_kaddr = base +
++						((new_pfn << PAGE_SHIFT) - encoded_range_phys_start);
++					clflush_cache_range(enc_kaddr, PAGE_SIZE);
++				}
++			}
++			rcu_read_unlock();
 +
-+                /* Must release PTL before clflush — holding the spinlock with
-+                 * interrupts disabled blocks TLB-shootdown IPIs from other
-+                 * CPUs, which deadlocks under concurrent page-fault load. */
-+                update_mmu_cache(vma, vmf->address, vmf->pte);
-+                pte_unmap_unlock(vmf->pte, vmf->ptl);
-+                clflush_cache_range(enc_kaddr, PAGE_SIZE);
-+                pr_info_once("seam: enc_pfn clflush outside PTL succeeded\n");
-+                vmf->pte = NULL;
-+                // clflush_cache_range(enc_kaddr, PAGE_SIZE);
-+            }
-+        }
++			vmf->pte = NULL;
++			return 0;  /* PTL already released, skip second update_mmu_cache */
++		}
++		update_mmu_cache(vma, vmf->address, vmf->pte);
++		return 0;
++	}
++skip_ppn_enc:
++	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
  	/* no need to invalidate: a not-present page won't be cached */
  	update_mmu_cache(vma, vmf->address, vmf->pte);
 -
  	return 0;
  }
-+skip_ppn_enc:
-+	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
-+    if (unlikely(only_flush)){
-+        void *orig_pfn_addr = kmap(page);
-+        clflush_cache_range(orig_pfn_addr, PAGE_SIZE);
-+        kunmap(page);
-+    }
-+   update_mmu_cache(vma, vmf->address, vmf->pte);
-+	return 0;
+ 
+--- /home/lyuze/linux-5.10.235/mm/page_vma_mapped.c	2025-03-13 07:47:45.000000000 -0400
++++ ./mm/page_vma_mapped.c	2026-04-19 20:23:15.946141860 -0400
+@@ -4,6 +4,7 @@
+ #include <linux/hugetlb.h>
+ #include <linux/swap.h>
+ #include <linux/swapops.h>
++#include <linux/encode_common.h>
+ 
+ #include "internal.h"
+ 
+@@ -110,6 +111,13 @@
+ 			return false;
+ 
+ 		pfn = pte_pfn(*pvmw->pte);
 +
-+	// page->last_mm = vma->vm_mm;
-+	// set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
-+	// update_mmu_cache(vma, vmf->address, vmf->pte);
-+	// return 0;
-+}
++		/* Decode SEAM-encoded PFN only on try_to_unmap path (PVMW_SEAM_DECODE).
++		 * Skipping decode for page_referenced/page_mkclean avoids PTL
++		 * contention — the page's non-encoded PTE (original owner) still
++		 * provides the reference/dirty signal. */
++		if (pvmw->flags & PVMW_SEAM_DECODE)
++			pfn = seam_decode_pfn(*pvmw->pte);
+ 	}
  
+ 	return pfn_is_match(pvmw->page, pfn);
+--- /home/lyuze/linux-5.10.235/mm/rmap.c	2025-03-13 07:47:45.000000000 -0400
++++ ./mm/rmap.c	2026-04-19 20:23:08.338209808 -0400
+@@ -72,6 +72,7 @@
+ #include <linux/page_idle.h>
+ #include <linux/memremap.h>
+ #include <linux/userfaultfd_k.h>
++#include <linux/encode_common.h>
  
- /**
---- /home/lyuze/linux-5.10.235/mm/mmap.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/mmap.c	2025-10-25 18:17:55.544070319 -0400
-@@ -47,6 +47,7 @@
- #include <linux/pkeys.h>
- #include <linux/oom.h>
- #include <linux/sched/mm.h>
-+#include <linux/sched.h>
+ #include <asm/tlbflush.h>
  
- #include <linux/uaccess.h>
- #include <asm/cacheflush.h>
---- /home/lyuze/linux-5.10.235/mm/page_alloc.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/page_alloc.c	2025-10-25 18:17:55.544070319 -0400
-@@ -1443,6 +1443,7 @@
- 	mm_zero_struct_page(page);
- 	set_page_links(page, zone, nid, pfn);
- 	init_page_count(page);
-+	// init_page_usecount(page);
- 	page_mapcount_reset(page);
- 	page_cpupid_reset_last(page);
- 	page_kasan_tag_reset(page);
---- /dev/null	2026-02-07 21:35:18.696004439 -0500
-+++ /home/lyuze/linux_page_encoding/mm/page_cgroup_vector_v2.c	2026-02-07 20:13:20.881698025 -0500
-@@ -0,0 +1,305 @@
+@@ -1378,6 +1379,7 @@
+ 		.page = page,
+ 		.vma = vma,
+ 		.address = address,
++		.flags = PVMW_SEAM_DECODE,
+ 	};
+ 	pte_t pteval;
+ 	struct page *subpage;
+@@ -1392,7 +1394,7 @@
+ 	 * if page table locking is skipped: use TTU_SYNC to wait for that.
+ 	 */
+ 	if (flags & TTU_SYNC)
+-		pvmw.flags = PVMW_SYNC;
++		pvmw.flags |= PVMW_SYNC;
+ 
+ 	/* munlock has nothing to gain from examining un-locked vmas */
+ 	if ((flags & TTU_MUNLOCK) && !(vma->vm_flags & VM_LOCKED))
+@@ -1466,7 +1468,8 @@
+ 		/* Unexpected PMD-mapped THP? */
+ 		VM_BUG_ON_PAGE(!pvmw.pte, page);
+ 
+-		subpage = page - page_to_pfn(page) + pte_pfn(*pvmw.pte);
++		/* Decode SEAM-encoded PFN for correct subpage calculation */
++		subpage = page - page_to_pfn(page) + seam_decode_pfn(*pvmw.pte);
+ 		address = pvmw.address;
+ 
+ 		if (PageHuge(page) && !PageAnon(page)) {
+@@ -1561,6 +1564,11 @@
+ 			pteval = ptep_clear_flush(vma, address, pvmw.pte);
+ 		}
+ 
++		/* Decrement SEAM counter for encoded KSM PTEs cleared by reclaim */
++		if ((pte_val(pteval) & _PAGE_ENCODE_BIT) && PageKsm(page)) {
++			atomic_dec(&num_ksm_coded);
++		}
++
+ 		/* Move the dirty bit to the page. Now the pte is gone. */
+ 		if (pte_dirty(pteval))
+ 			set_page_dirty(page);
+--- /dev/null	2026-04-18 16:42:55.816004442 -0400
++++ ./mm/page_cgroup_vector.c	2026-04-19 20:24:17.445592577 -0400
+@@ -0,0 +1,546 @@
 +#include <linux/kernel.h>
 +#include <linux/mm.h>
 +#include <linux/slab.h>
@@ -955,26 +483,48 @@
 +#include <linux/encode_common.h>
 +#include <linux/random.h>
 +#include <linux/rcupdate.h>
++#include <linux/io.h>
++#include <linux/debugfs.h>
++#include <linux/uaccess.h>
++#include <linux/cgroup.h>
++#include <linux/sched.h>
++#include <linux/ksm.h>
++#include <linux/highmem.h>
++#include <asm/special_insns.h>
 +
 +#define INITIAL_VECTOR_CAPACITY 4
 +#define SHRINK_THRESHOLD_RATIO 4  /* Shrink when size < capacity/4 */
 +
 +unsigned long base_pfn = 34078720; // 130 GB
-+unsigned long num_cxl_page_entries = 4194304; // 16G
-+unsigned long lmm_group_size = 8;
-+unsigned long end_cxl_pfn = 38273024; // end CXL physical PFN: 130+16=146 GB
++unsigned long num_cxl_page_entries = 4063232; // 15.5G encodable
++unsigned long lmm_group_size = 16;   /* must match FPGA decode group size */
++unsigned long end_cxl_pfn = 38273024; // end CXL physical PFN: 130+16=146 GB (matches FPGA UPPER_BOUND)
 +
-+int init_page_cgroup_vector_v2(struct page_cgroup_vector **vec)
++atomic_t seam_encode_enabled = ATOMIC_INIT(0);
++atomic_t num_file_coded = ATOMIC_INIT(0);
++atomic_t num_ksm_coded = ATOMIC_INIT(0);
++atomic_t num_ksm_skipped = ATOMIC_INIT(0);
++
++/* ioremap'd mapping covering the encoded PFN range (146GB+) for clflush.
++ * With memmap=240G$146G the direct map doesn't cover the reserved region,
++ * so we create our own cached mapping on enable. */
++void __iomem *encoded_range_base;
++unsigned long encoded_range_phys_start;
++
++/* Core allocator: node=NUMA_NO_NODE for default, node=0 for DRAM */
++int init_page_cgroup_vector_v2_node(struct page_cgroup_vector **vec, gfp_t gfp, int node)
 +{
-+	*vec = kzalloc(sizeof(struct page_cgroup_vector), GFP_KERNEL);
-+	if (!*vec) {
-+		pr_err("Failed to allocate page_cgroup_vector\n");
-+		return -ENOMEM;
++	if (lmm_group_size > 64) {
++		pr_err("lmm_group_size %lu exceeds maximum supported value of 64\n", lmm_group_size);
++		return -EINVAL;
 +	}
 +
-+	(*vec)->data = kzalloc(sizeof(struct page_cgroup_triplet) * INITIAL_VECTOR_CAPACITY, GFP_KERNEL);
++	*vec = kzalloc_node(sizeof(struct page_cgroup_vector), gfp, node);
++	if (!*vec)
++		return -ENOMEM;
++
++	(*vec)->data = kzalloc_node(sizeof(struct page_cgroup_triplet) * INITIAL_VECTOR_CAPACITY, gfp, node);
 +	if (!(*vec)->data) {
-+		pr_err("Failed to allocate page_cgroup_vector data\n");
 +		kfree(*vec);
 +		*vec = NULL;
 +		return -ENOMEM;
@@ -984,6 +534,12 @@
 +	(*vec)->capacity = INITIAL_VECTOR_CAPACITY;
 +	(*vec)->size = 0;
 +	return 0;
++}
++
++/* GFP_ATOMIC on local node — for callers under PTL (alloc_set_pte) */
++int init_page_cgroup_vector_v2(struct page_cgroup_vector **vec)
++{
++	return init_page_cgroup_vector_v2_node(vec, GFP_ATOMIC, NUMA_NO_NODE);
 +}
 +
 +static int resize_vector(struct page_cgroup_vector *vec, int new_capacity)
@@ -1007,14 +563,15 @@
 +	return 0;
 +}
 +
-+static u8 find_random_available_bit(u8 intermediate_bitvector)
++static u8 find_random_available_bit(u64 intermediate_bitvector)
 +{
 +	u8 available_count = 0;
-+	u8 available_indices[8];
++	u8 available_indices[64];  /* Support up to 64 encoding slots */
 +	int i;
 +
-+	for (i = 0; i < 8; i++) {
-+		if (!(intermediate_bitvector & (1 << i))) {
++	/* Check all lmm_group_size slots (ioremap covers full stride) */
++	for (i = 0; i < lmm_group_size; i++) {
++		if (!(intermediate_bitvector & (1ULL << i))) {
 +			available_indices[available_count++] = i;
 +		}
 +	}
@@ -1022,8 +579,7 @@
 +	if (available_count == 0)
 +		return 255; /* No available bits */
 +
-+	get_random_bytes(&i, sizeof(i));
-+	return available_indices[((unsigned int)i) % available_count];
++	return available_indices[prandom_u32() % available_count];
 +}
 +
 +int try_inc_page_usecount_v2(struct page *page, unsigned long old_pfn,
@@ -1031,7 +587,7 @@
 +{
 +	struct page_cgroup_vector *vec;
 +
-+	if (old_pfn < base_pfn || !page) {
++	if (old_pfn < base_pfn || old_pfn >= base_pfn + num_cxl_page_entries || !page) {
 +		return 0;
 +	}
 +
@@ -1044,11 +600,7 @@
 +		return 0;
 +	}
 +
-+	/* Lock the vector itself, not the page table lock */
-+	if (!spin_trylock(&vec->lock)) {
-+		rcu_read_unlock();
-+		return 0;
-+	}
++	spin_lock(&vec->lock);
 +
 +	/* Can unlock RCU now that we hold the spinlock */
 +	rcu_read_unlock();
@@ -1056,7 +608,7 @@
 +	u16 cgroup_id_16 = (u16)(curr_cgroup_id & 0xFFFF);
 +	int found_idx = -1;
 +	int non_zero_count = 0;
-+	u8 intermediate_bitvector = 0;  /* 8-bit intermediate bitvector */
++	u64 intermediate_bitvector = 0;  /* Up to 64-bit bitvector for lmm_group_size */
 +	int i;
 +
 +	/* Linear scan: check for matching cgroup_id and populate intermediate bitvector */
@@ -1067,24 +619,31 @@
 +		if (vec->data[i].cgroup_id != 0) {
 +			non_zero_count++;
 +			/* Set bit in intermediate bitvector based on encode_idx */
-+			/* Ensure encode_idx is within valid range (0-7) */
-+			if (vec->data[i].encode_idx < 8) {
-+				intermediate_bitvector |= (1 << vec->data[i].encode_idx);
++			/* Ensure encode_idx is within valid range (0 to lmm_group_size-1) */
++			if (vec->data[i].encode_idx < lmm_group_size) {
++				intermediate_bitvector |= (1ULL << vec->data[i].encode_idx);
 +			}
 +		}
 +	}
 +
 +	/* If found matching cgroup_id, increment map_count and return immediately.
-+	 * Set encode_idx = -1 to indicate this is an EXISTING cgroup (SECURE, same VM),
-+	 * so the caller knows NOT to encode the PTE. */
++	 * Return the existing encode_idx so the caller can re-encode the PTE
++	 * (needed for KSM re-merges after COW breaks). */
 +	if (found_idx != -1) {
-+		*encode_idx = -1;  /* Signal: existing cgroup, no encoding needed */
++		*encode_idx = vec->data[found_idx].encode_idx;
 +		vec->data[found_idx].map_count++;
 +		spin_unlock(&vec->lock);
 +		return non_zero_count;
 +	}
 +
 +	/* No matching cgroup_id found - need to create new entry */
++	/* Check if we've reached the maximum capacity (lmm_group_size) */
++	if (non_zero_count >= lmm_group_size) {
++		*encode_idx = -1;  /* Maximum cgroups per page reached */
++		spin_unlock(&vec->lock);
++		return non_zero_count;
++	}
++
 +	/* Use intermediate bitvector to randomly choose available encode_idx */
 +	u8 new_encode_idx = find_random_available_bit(intermediate_bitvector);
 +	if (new_encode_idx == 255) {
@@ -1096,7 +655,6 @@
 +	/* Resize vector if needed */
 +	if (vec->size >= vec->capacity) {
 +		int new_capacity = vec->capacity + (vec->capacity / 2);
-+		// pr_info("resizing to %d\n", new_capacity);
 +		if (resize_vector(vec, new_capacity) != 0) {
 +			*encode_idx = -1;
 +			spin_unlock(&vec->lock);
@@ -1188,14 +746,17 @@
 +
 +	/* Free vector if empty */
 +	if (vec->size == 0) {
-+		/* Clear pointer while still holding lock to prevent new readers */
-+		rcu_assign_pointer(page->page_cgroup_vector, NULL);
-+
-+		spin_unlock(&vec->lock);
-+
-+		/* Schedule asynchronous freeing after RCU grace period
-+		 * This does NOT block - freeing happens later via callback */
-+		call_rcu(&vec->rcu, free_page_cgroup_vector_rcu);
++		/* Only call_rcu if WE are the one to NULL the pointer.
++		 * free_page_cgroup_vector_v2 may have already NULLed it and
++		 * scheduled its own call_rcu — double call_rcu corrupts the
++		 * RCU callback chain. */
++		if (rcu_access_pointer(page->page_cgroup_vector) == vec) {
++			rcu_assign_pointer(page->page_cgroup_vector, NULL);
++			spin_unlock(&vec->lock);
++			call_rcu(&vec->rcu, free_page_cgroup_vector_rcu);
++		} else {
++			spin_unlock(&vec->lock);
++		}
 +		return 0;
 +	}
 +
@@ -1205,19 +766,42 @@
 +
 +void free_page_cgroup_vector_v2(void)
 +{
-+	unsigned long start_pfn = base_pfn;
 +	unsigned long curr_pfn;
-+	for (curr_pfn = start_pfn; curr_pfn < end_cxl_pfn; curr_pfn++) {
-+		if (!pfn_valid(curr_pfn)) {
++	struct page *page;
++	struct page_cgroup_vector *vec;
++
++	for (curr_pfn = base_pfn; curr_pfn < end_cxl_pfn; curr_pfn++) {
++		if (!pfn_valid(curr_pfn))
 +			continue;
-+		}
-+		struct page *page = pfn_to_page(curr_pfn);
-+		if (page->page_cgroup_vector) {
-+			kfree(page->page_cgroup_vector->data);
-+			kfree(page->page_cgroup_vector);
-+			page->page_cgroup_vector = NULL;
++		page = pfn_to_page(curr_pfn);
++
++		/* Use RCU + spinlock to safely race with reset_page_usecount_v2.
++		 * rcu_read_lock prevents the vec from being freed between our
++		 * pointer read and spinlock acquisition.  The spinlock serializes
++		 * with reset_page_usecount_v2.  Only the "winner" (whoever NULLs
++		 * the pointer) calls call_rcu — preventing double-enqueue. */
++		rcu_read_lock();
++		vec = rcu_dereference(page->page_cgroup_vector);
++		if (vec) {
++			spin_lock(&vec->lock);
++			rcu_read_unlock();
++			if (rcu_access_pointer(page->page_cgroup_vector) == vec) {
++				rcu_assign_pointer(page->page_cgroup_vector, NULL);
++				spin_unlock(&vec->lock);
++				call_rcu(&vec->rcu, free_page_cgroup_vector_rcu);
++			} else {
++				/* reset_page_usecount_v2 already NULLed it */
++				spin_unlock(&vec->lock);
++			}
++		} else {
++			rcu_read_unlock();
 +		}
 +	}
++
++	/* Wait for all call_rcu callbacks (ours + reset_page_usecount_v2's)
++	 * to complete before returning, so the caller knows all vectors
++	 * are fully freed. */
++	rcu_barrier();
 +}
 +
 +void print_unfreed_cgroup_vector(void)
@@ -1250,14 +834,281 @@
 +		}
 +	}
 +}
---- /home/lyuze/linux-5.10.235/mm/rmap.c	2025-03-13 07:47:45.000000000 -0400
-+++ /home/lyuze/linux_page_encoding/mm/rmap.c	2025-10-25 18:16:16.557018150 -0400
-@@ -1922,7 +1922,7 @@
-  * vm_flags for that VMA.  That should be OK, because that vma shouldn't be
-  * LOCKED.
-  */
--static void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
-+void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
- 		bool locked)
- {
- 	struct address_space *mapping = page_mapping(page);
++
++/* ---- debugfs control plane: /sys/kernel/debug/seam_debug/ ---- */
++
++static ssize_t seam_encode_write(struct file *file, const char __user *buf,
++				 size_t count, loff_t *ppos)
++{
++	int tmp;
++
++	if (kstrtoint_from_user(buf, count, 0, &tmp))
++		return -EINVAL;
++	if (tmp != 0 && tmp != 1) {
++		pr_info("unsupported value: %d\n", tmp);
++		return -EINVAL;
++	}
++
++	if (tmp == 1) {
++		/* Create a cached ioremap for the encoded PFN range so clflush
++		 * works even when the direct map doesn't cover it.  Total span =
++		 * num_cxl_page_entries * lmm_group_size pages.  lmm_group_size
++		 * MUST match the FPGA's decode group size. */
++		unsigned long total_encoded_pages = num_cxl_page_entries * lmm_group_size;
++		unsigned long mapping_size = total_encoded_pages << PAGE_SHIFT;
++
++		encoded_range_phys_start = end_cxl_pfn << PAGE_SHIFT;
++		encoded_range_base = ioremap_cache(encoded_range_phys_start, mapping_size);
++		if (encoded_range_base)
++			pr_info("seam: ioremap_cache 0x%lx size %lu MB at %px\n",
++				encoded_range_phys_start, mapping_size >> 20, encoded_range_base);
++		else
++			pr_warn("seam: failed to ioremap_cache encoded range\n");
++	} else if (encoded_range_base) {
++		/* NULL the pointer first so new users see NULL and skip clflush,
++		 * then synchronize_rcu to wait for any in-flight clflush (under
++		 * rcu_read_lock) before unmapping. */
++		void __iomem *old_base = encoded_range_base;
++
++		WRITE_ONCE(encoded_range_base, NULL);
++		synchronize_rcu();
++		iounmap(old_base);
++		pr_info("seam: iounmap encoded range at %px\n", old_base);
++	}
++
++	atomic_set(&seam_encode_enabled, tmp);
++	pr_info("resetting all cgroup_vector (encode=%d)\n", tmp);
++	free_page_cgroup_vector_v2();
++	atomic_set(&num_file_coded, 0);
++	atomic_set(&num_ksm_coded, 0);
++	atomic_set(&num_ksm_skipped, 0);
++	return count;
++}
++
++static ssize_t seam_encode_read(struct file *file, char __user *buf,
++				size_t count, loff_t *ppos)
++{
++	char val_buf[16];
++	int len = scnprintf(val_buf, sizeof(val_buf), "%d\n",
++			    atomic_read(&seam_encode_enabled));
++	return simple_read_from_buffer(buf, count, ppos, val_buf, len);
++}
++
++static const struct file_operations seam_encode_fops = {
++	.owner = THIS_MODULE,
++	.read  = seam_encode_read,
++	.write = seam_encode_write,
++};
++
++static ssize_t seam_peek_write(struct file *file, const char __user *buf,
++			       size_t count, loff_t *ppos)
++{
++	int tmp;
++
++	if (kstrtoint_from_user(buf, count, 0, &tmp))
++		return -EINVAL;
++	if (tmp == 0) {
++		pr_info("unfreed cgroup_vector\n");
++		print_unfreed_cgroup_vector();
++	} else if (tmp == 1) {
++		pr_info("num_file_coded: %d, num_ksm_coded: %d, num_ksm_skipped: %d\n",
++			atomic_read(&num_file_coded), atomic_read(&num_ksm_coded),
++			atomic_read(&num_ksm_skipped));
++	} else {
++		return -EINVAL;
++	}
++	return count;
++}
++
++static const struct file_operations seam_peek_fops = {
++	.owner = THIS_MODULE,
++	.write = seam_peek_write,
++};
++
++static int __init init_seam_debugfs(void)
++{
++	struct dentry *dir = debugfs_create_dir("seam_debug", NULL);
++
++	if (IS_ERR_OR_NULL(dir))
++		return 0;
++	debugfs_create_file("encode_enable", 0644, dir, NULL, &seam_encode_fops);
++	debugfs_create_file("peek_stats",    0200, dir, NULL, &seam_peek_fops);
++	return 0;
++}
++late_initcall(init_seam_debugfs);
++
++/* ---- SEAM helpers used by memory.c / ksm.c ---- */
++
++u64 get_task_cgroup_id(struct task_struct *task)
++{
++	struct cgroup *cgrp;
++	u64 id = 0;
++
++	if (!task) {
++		pr_err("task is NULL!!\n");
++		return 0;
++	}
++
++	rcu_read_lock();
++	cgrp = task_dfl_cgroup(task);
++	if (cgrp && cgrp->kn)
++		id = cgrp->kn->id;
++	rcu_read_unlock();
++	return id;
++}
++
++pte_t seam_encode_pte(pte_t orig_pte, int encode_idx, unsigned long *new_pfn)
++{
++	unsigned long old_val = pte_val(orig_pte);
++	unsigned long old_pfn = (old_val & PFN_MASK) >> PAGE_SHIFT;
++	unsigned long enc_pfn = (old_pfn - base_pfn) * lmm_group_size + end_cxl_pfn + encode_idx;
++	unsigned long new_val = (old_val & ~PFN_MASK) | (enc_pfn << PAGE_SHIFT) | _PAGE_ENCODE_BIT;
++
++	*new_pfn = enc_pfn;
++	return __pte(new_val);
++}
++
++void seam_flush_page_with_clwb(void *page_addr)
++{
++	char *addr = (char *)page_addr;
++	int i;
++
++	for (i = 0; i < 64; i++) {
++		clwb(addr);
++		addr += 64;
++	}
++	asm volatile("sfence" ::: "memory");
++}
++
++/*
++ * vm_normal_page_seam - decode encoded PTE, clean up usecount, then delegate
++ * to vm_normal_page() for standard validation.
++ *
++ * @out_pte: if non-NULL, the decoded PTE is written back (unmap path).
++ *           Also controls whether non-encoded CXL pages get usecount cleanup.
++ *           Pass NULL for the COW/readonly path.
++ */
++struct page *vm_normal_page_seam(struct vm_area_struct *vma, unsigned long addr,
++				 pte_t pte, volatile pte_t *out_pte)
++{
++	unsigned long pfn = pte_pfn(pte);
++
++	if ((pte_val(pte) & _PAGE_ENCODE_BIT) && pfn >= end_cxl_pfn) {
++		unsigned long decoded = seam_decode_pfn(pte);
++
++		if (decoded != pfn) {
++			struct page *page = pfn_to_page(decoded);
++			unsigned long mask = ~(PFN_MASK | _PAGE_ENCODE_BIT);
++			unsigned long new_val = (pte_val(pte) & mask) | (decoded << PAGE_SHIFT);
++
++			if (PageKsm(page))
++				atomic_dec(&num_ksm_coded);
++			else
++				atomic_dec(&num_file_coded);
++			pte = __pte(new_val);
++			if (out_pte)
++				*out_pte = pte;
++			reset_page_usecount_v2(page, get_task_cgroup_id(current), decoded);
++		}
++	} else if (out_pte && pfn >= base_pfn && pfn < end_cxl_pfn) {
++		struct page *page = pfn_to_page(pfn);
++
++		if (page->page_cgroup_vector)
++			reset_page_usecount_v2(page, get_task_cgroup_id(current), pfn);
++	}
++
++	return vm_normal_page(vma, addr, pte);
++}
+--- /dev/null	2026-04-18 16:42:55.816004442 -0400
++++ ./include/linux/encode_common.h	2026-04-19 20:23:53.725804443 -0400
+@@ -0,0 +1,72 @@
++#ifndef _ENCODE_COMMON_H
++#define _ENCODE_COMMON_H
++
++#include <linux/types.h>
++#include <linux/atomic.h>
++#include <linux/bits.h>
++
++/* PTE encoding bit definitions */
++#define PFN_MASK GENMASK_ULL(51, 12)
++#define _PAGE_ENCODE_BIT (1UL << 52)
++
++struct page_cgroup_tuple {
++	u64 cgroup_id;
++	int map_count;
++};
++
++struct page_cgroup_triplet {
++	u16 cgroup_id;    /* 2 bytes - truncated from u64 */
++	u8 encode_idx;    /* 1 byte */
++	u8 map_count;     /* 1 byte */
++} __packed;           /* Total: 4 bytes */
++
++struct page_cgroup_vector {
++	struct page_cgroup_triplet *data;
++	int capacity;
++	int size;
++	spinlock_t lock;  /* Protects data, capacity, and size */
++	struct rcu_head rcu;  /* For RCU-safe asynchronous freeing */
++};
++extern unsigned long base_pfn;
++extern unsigned long num_cxl_page_entries;
++extern unsigned long lmm_group_size; /* Number of encoding slots; max different cgroups per page = lmm_group_size - 1. Max supported: 64 */
++extern unsigned long end_cxl_pfn;
++
++/* ioremap'd cached mapping for encoded PFN range (for clflush) */
++extern void __iomem *encoded_range_base;
++extern unsigned long encoded_range_phys_start;
++
++/* Encoding control variables */
++extern atomic_t seam_encode_enabled;
++extern atomic_t num_file_coded;  /* Counter for file-backed page encoding (alloc_set_pte) */
++extern atomic_t num_ksm_coded;   /* Counter for KSM anonymous page encoding (replace_page) */
++
++/* Diagnostic counters */
++extern atomic_t num_ksm_skipped;    /* KSM merged but SEAM encoding skipped (lock contention or alloc failure) */
++
++/* Helper functions */
++struct task_struct;
++struct vm_area_struct;
++u64 get_task_cgroup_id(struct task_struct *task);
++struct page *vm_normal_page_seam(struct vm_area_struct *vma, unsigned long addr,
++				 pte_t pte, volatile pte_t *out_pte);
++pte_t seam_encode_pte(pte_t orig_pte, int encode_idx, unsigned long *new_pfn);
++void seam_flush_page_with_clwb(void *page_addr);
++
++/* Decode an encoded PFN back to its real PFN.  Returns @pfn unchanged for
++ * non-encoded PTEs.  Always valid to call whether SEAM is enabled or not, so
++ * cleanup paths work after encoding is disabled. */
++static inline unsigned long seam_decode_pfn_raw(unsigned long pte_val_, unsigned long pfn)
++{
++	if ((pte_val_ & _PAGE_ENCODE_BIT) && pfn >= end_cxl_pfn) {
++		unsigned long idx = (pfn - end_cxl_pfn) % lmm_group_size;
++		unsigned long decoded = (pfn - end_cxl_pfn - idx) / lmm_group_size + base_pfn;
++
++		if (decoded >= base_pfn && decoded < end_cxl_pfn)
++			return decoded;
++	}
++	return pfn;
++}
++#define seam_decode_pfn(pte) seam_decode_pfn_raw(pte_val(pte), pte_pfn(pte))
++
++#endif
+--- /dev/null	2026-04-18 16:42:55.816004442 -0400
++++ ./include/linux/page_cgroup_vector.h	2026-04-07 10:23:20.933525920 -0400
+@@ -0,0 +1,15 @@
++#ifndef _PAGE_CGROUP_VECTOR_H
++#define _PAGE_CGROUP_VECTOR_H
++#include <linux/types.h>
++
++void print_unfreed_cgroup_vector(void);
++
++/* V2 API with resizable vector and dynamic bitvector (up to 64-bit, determined by lmm_group_size) */
++int init_page_cgroup_vector_v2(struct page_cgroup_vector **vec);
++int init_page_cgroup_vector_v2_node(struct page_cgroup_vector **vec, gfp_t gfp, int node);
++int try_inc_page_usecount_v2(struct page *page, unsigned long old_pfn,
++			     u64 curr_cgroup_id, int *encode_idx);
++int reset_page_usecount_v2(struct page *page, u64 curr_cgroup_id,
++			   unsigned long pfn);
++void free_page_cgroup_vector_v2(void);
++#endif

@@ -377,6 +377,33 @@ a:hover {
   margin-right: auto;
 }
 
+/* Attack matrix (3 cols × 2 rows) */
+.attack-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.attack-grid .eval-item img {
+  max-width: 100%;
+  width: 100%;
+  padding: 0.35rem;
+}
+
+.attack-grid .eval-item .label {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e3a5f;
+}
+
+@media (max-width: 768px) {
+  .attack-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Stats row */
 .stats-row {
   display: grid;
