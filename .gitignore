@@ -31,3 +31,6 @@ yarn-error.log*
 
 # Local Netlify folder
 .netlify
+
+# Paper source (local-only reference; not deployed)
+/paper_content
