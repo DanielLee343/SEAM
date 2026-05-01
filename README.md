@@ -11,7 +11,7 @@ The single landing page (`pages/index.js`) walks through the paper in five secti
 
 - **Hero / Abstract** — the non-intrusive positioning and what CPM delivers.
 - **Motivation** — why memory sharing is disabled in data centers today (reuse-based side channels, current practice, why prior hardware defenses are too invasive).
-- **Approach** — the "merge at the memory endpoint" idea, a 3-figure comparison of current deployment / prior defenses / CPM, a components-touched table, and the OS-side procedures + KSM integration + full Linux patch file-by-file overview.
+- **Approach** — the "merge at the memory endpoint" idea, a 3-figure comparison of current deployment / prior defenses / CPM, a components-touched table, the hardware-side AFU merging implementation on a CXL Type-3 FPGA device (including AXI address remapping logic, architecture diagrams, SystemVerilog module, and address transformation equation), and the OS-side procedures + KSM integration + full Linux patch file-by-file overview.
 - **Generality** — multi-socket support, huge pages, and applicability to conflict side channels.
 - **Evaluation** — Flush+Reload across six scenarios (containers / VMs / host × same-core / different-core), access-latency distribution, performance and memory-saving stats, and VM-density sensitivity.
 - **Download** — the Linux 5.10.235 kernel patch served at `/seam_v5.10.235.patch`.

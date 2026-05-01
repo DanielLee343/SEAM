@@ -178,6 +178,143 @@ export default function Home() {
               CPM reduces modifications from 7 components down to just 2 (MC + OS) &mdash; and leaves the entire core pipeline untouched.
             </p>
           </div>
+
+          {/* Hardware Modifications */}
+          <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>
+            Hardware Modifications
+          </h3>
+
+          <p style={{ color: '#4b5563' }}>
+            We implemented merging logic in the hardware side of a CXL Type-3 Device
+            design example. This design is built on the Terasic Mercury A2700 Accelerator
+            Card, which integrates an Intel Agilex 7 FPGA with on-board DRAM. The system
+            consists of a host server connected over PCIe/CXL to the FPGA device. Inside
+            the FPGA, the CXL IP interfaces with an Accelerator Functional Unit (AFU),
+            which in turn connects to the Memory Controller (MC) and DRAM through AXI.
+            This setup allows the device to behave as a memory expansion unit exposed to
+            the host.
+          </p>
+
+          <p style={{ color: '#4b5563', marginTop: '1rem' }}>
+            Here is the hardware architecture and where the modifications are implemented.
+          </p>
+
+          <div className="eval-grid">
+            <div className="eval-item">
+              <img
+                src="/hardware-architecture.png"
+                alt="Hardware Architecture and AFU Modifications"
+              />
+            </div>
+          </div>
+
+          <p style={{ color: '#4b5563', marginTop: '1.5rem' }}>
+            Our focus is on modifying the AFU. Specifically, we implemented merging logic
+            only on the AXI address paths namely, <code>awaddr</code> (write address
+            channel) and <code>araddr</code> (read address channel). All other AXI signals
+            (W, B, R channels and non-address signals in AW/AR) are passed through
+            unchanged. The merging logic remaps incoming addresses before they reach the
+            memory controller.
+          </p>
+
+          <p style={{ color: '#4b5563', marginTop: '1rem' }}>
+            Here is the detailed implementation inside the AFU.
+          </p>
+
+          <div className="eval-grid">
+            <div className="eval-item">
+              <img
+                src="/afu-merging-logic.png"
+                alt="Detailed AFU Merging Logic"
+              />
+            </div>
+          </div>
+
+          <h4
+            style={{
+              color: '#1e3a5f',
+              marginTop: '2rem',
+              marginBottom: '0.75rem'
+            }}
+          >
+            Implemented Merging Module
+          </h4>
+
+          <div
+            style={{
+              background: '#0f172a',
+              color: '#e5e7eb',
+              padding: '1.25rem',
+              borderRadius: '0.75rem',
+              overflowX: 'auto',
+              fontSize: '0.9rem',
+              lineHeight: '1.5'
+            }}
+          >
+            <pre style={{ margin: 0 }}>
+          {`module cpm_merging #(parameter N = 52 )(
+              input  logic [(N-1):0] signal_in,
+              output logic [(N-1):0] signal_out
+          );
+
+          localparam logic [N-1:0] BASE_ADDR   = 52'h2080000000; // 130 GB
+          localparam logic [N-1:0] UPPER_BOUND = 52'h247FFFFFFF; // 130 + 16 GB
+          localparam logic [11:0] MOD_MASK     = 12'hFFF; // mask for 4KB
+
+          always_comb begin
+              if (signal_in > UPPER_BOUND) begin
+                  signal_out =
+                      (((signal_in - UPPER_BOUND) >> 17) << 12) +
+                      BASE_ADDR +
+                      (signal_in & MOD_MASK);
+              end
+              else begin
+                  signal_out = signal_in;
+              end
+          end
+
+          endmodule`}
+            </pre>
+          </div>
+
+          <p style={{ color: '#4b5563', marginTop: '1.5rem' }}>
+            Here <code>BASE_ADDR</code> is the address from where the CXL-attached memory
+            starts. Therefore, <code>UPPER_BOUND</code> represents the physical end
+            address of the CXL-attached memory region.
+          </p>
+
+          <h4
+            style={{
+              color: '#1e3a5f',
+              marginTop: '2rem',
+              marginBottom: '0.75rem'
+            }}
+          >
+            Address Transformation
+          </h4>
+
+          <div
+            style={{
+              background: '#f3f4f6',
+              padding: '1rem',
+              borderRadius: '0.75rem',
+              fontSize: '1rem',
+              color: '#111827',
+              overflowX: 'auto'
+            }}
+          >
+            <code>
+              MergedAddr = [(addr - upperbound_addr) / (4K * group_size)] * 4K
+              + base_addr + addr % 4K
+            </code>
+          </div>
+
+          <p style={{ color: '#4b5563', marginTop: '1.5rem' }}>
+            In short, we intercept only the read/write address signals in the AFU, apply
+            the merging/remapping logic, and forward the modified addresses to the memory
+            controller while leaving the rest of the AXI data path untouched.
+          </p>
+
           {/* OS Procedures */}
           <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>OS Modifications</h3>
           <p style={{ color: '#4b5563' }}>
