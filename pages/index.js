@@ -195,7 +195,14 @@ export default function Home() {
             the host.
           </p>
 
-          <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              marginTop: '1.5rem'
+            }}
+          >
             <img
               src="/hardware-architecture.png"
               alt="Hardware Architecture and AFU Modifications"
@@ -207,7 +214,8 @@ export default function Home() {
               style={{
                 marginTop: '0.75rem',
                 color: '#6b7280',
-                fontSize: '0.9rem'
+                fontSize: '0.9rem',
+                textAlign: 'center'
               }}
             >
               Hardware architecture of the CXL Type-3 FPGA device and the location of the
@@ -224,7 +232,14 @@ export default function Home() {
             memory controller.
           </p>
 
-          <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              marginTop: '1.5rem'
+            }}
+          >
             <img
               src="/afu-merging-logic.png"
               alt="Detailed AFU Merging Logic"
@@ -236,7 +251,8 @@ export default function Home() {
               style={{
                 marginTop: '0.75rem',
                 color: '#6b7280',
-                fontSize: '0.9rem'
+                fontSize: '0.9rem',
+                textAlign: 'center'
               }}
             >
               Detailed AFU implementation showing interception and remapping of AXI
@@ -256,7 +272,7 @@ export default function Home() {
 
           <div
             style={{
-              background: '#d1e7d0',
+              background: '#cdf6cb',
               color: '#000000',
               padding: '1.25rem',
               borderRadius: '0.75rem',
