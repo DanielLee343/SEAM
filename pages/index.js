@@ -201,7 +201,6 @@ export default function Home() {
             justifyContent: 'center',
             alignItems: 'flex-start',
             gap: '2rem',
-            flexWrap: 'wrap',
             marginTop: '1.5rem'
           }}
         >
@@ -209,14 +208,17 @@ export default function Home() {
             style={{
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center'
+              alignItems: 'center',
+              flex: 1
             }}
           >
             <img
               src="/hardware-architecture.png"
               alt="Hardware Architecture and AFU Modifications"
               style={{
-                borderRadius: '0.75rem'
+                borderRadius: '0.75rem',
+                width: '100%',
+                maxWidth: '450px'
               }}
             />
             <div
@@ -225,7 +227,7 @@ export default function Home() {
                 color: '#6b7280',
                 fontSize: '0.9rem',
                 textAlign: 'center',
-                maxWidth: '500px'
+                maxWidth: '450px'
               }}
             >
               Hardware architecture of the CXL Type-3 FPGA device and the location of
@@ -237,14 +239,17 @@ export default function Home() {
             style={{
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center'
+              alignItems: 'center',
+              flex: 1
             }}
           >
             <img
               src="/afu-merging-logic.png"
               alt="Detailed AFU Merging Logic"
               style={{
-                borderRadius: '0.75rem'
+                borderRadius: '0.75rem',
+                width: '100%',
+                maxWidth: '450px'
               }}
             />
             <div
@@ -253,7 +258,7 @@ export default function Home() {
                 color: '#6b7280',
                 fontSize: '0.9rem',
                 textAlign: 'center',
-                maxWidth: '500px'
+                maxWidth: '450px'
               }}
             >
               Detailed AFU implementation showing interception and remapping of AXI
@@ -283,7 +288,7 @@ export default function Home() {
 
           <div
             style={{
-              background: '#e4f3e3',
+              background: '#eaf3e9',
               color: '#000000',
               padding: '1.25rem',
               borderRadius: '0.75rem',
