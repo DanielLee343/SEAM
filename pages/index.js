@@ -196,11 +196,20 @@ export default function Home() {
           </p>
 
           <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            gap: '2rem',
+            flexWrap: 'wrap',
+            marginTop: '1.5rem'
+          }}
+        >
+          <div
             style={{
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
-              marginTop: '1.5rem'
+              alignItems: 'center'
             }}
           >
             <img
@@ -215,29 +224,20 @@ export default function Home() {
                 marginTop: '0.75rem',
                 color: '#6b7280',
                 fontSize: '0.9rem',
-                textAlign: 'center'
+                textAlign: 'center',
+                maxWidth: '500px'
               }}
             >
-              Hardware architecture of the CXL Type-3 FPGA device and the location of the
-              implemented AFU modifications.
+              Hardware architecture of the CXL Type-3 FPGA device and the location of
+              the implemented AFU modifications.
             </div>
           </div>
-
-          <p style={{ color: '#4b5563', marginTop: '1.5rem' }}>
-            Our focus is on modifying the AFU. Specifically, we implemented merging logic
-            only on the AXI address paths namely, <code>awaddr</code> (write address
-            channel) and <code>araddr</code> (read address channel). All other AXI signals
-            (W, B, R channels and non-address signals in AW/AR) are passed through
-            unchanged. The merging logic remaps incoming addresses before they reach the
-            memory controller.
-          </p>
 
           <div
             style={{
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
-              marginTop: '1.5rem'
+              alignItems: 'center'
             }}
           >
             <img
@@ -252,13 +252,24 @@ export default function Home() {
                 marginTop: '0.75rem',
                 color: '#6b7280',
                 fontSize: '0.9rem',
-                textAlign: 'center'
+                textAlign: 'center',
+                maxWidth: '500px'
               }}
             >
               Detailed AFU implementation showing interception and remapping of AXI
               address signals before forwarding requests to the memory controller.
             </div>
           </div>
+        </div>
+
+          <p style={{ color: '#4b5563', marginTop: '1.5rem' }}>
+            Our focus is on modifying the AFU. Specifically, we implemented merging logic
+            only on the AXI address paths namely, <code>awaddr</code> (write address
+            channel) and <code>araddr</code> (read address channel). All other AXI signals
+            (W, B, R channels and non-address signals in AW/AR) are passed through
+            unchanged. The merging logic remaps incoming addresses before they reach the
+            memory controller.
+          </p>
 
           <h4
             style={{
@@ -272,7 +283,7 @@ export default function Home() {
 
           <div
             style={{
-              background: '#cdf6cb',
+              background: '#e4f3e3',
               color: '#000000',
               padding: '1.25rem',
               borderRadius: '0.75rem',
