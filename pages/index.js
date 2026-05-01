@@ -200,7 +200,6 @@ export default function Home() {
               src="/hardware-architecture.png"
               alt="Hardware Architecture and AFU Modifications"
               style={{
-                maxWidth: '100%',
                 borderRadius: '0.75rem'
               }}
             />
@@ -230,7 +229,6 @@ export default function Home() {
               src="/afu-merging-logic.png"
               alt="Detailed AFU Merging Logic"
               style={{
-                maxWidth: '100%',
                 borderRadius: '0.75rem'
               }}
             />
@@ -258,7 +256,7 @@ export default function Home() {
 
           <div
             style={{
-              background: '#c2eabe',
+              background: '#d1e7d0',
               color: '#000000',
               padding: '1.25rem',
               borderRadius: '0.75rem',
@@ -273,26 +271,26 @@ export default function Home() {
                 whiteSpace: 'pre-wrap'
               }}
           >{`module cpm_merging #(parameter N = 52 )(
-              input  logic [(N-1):0] signal_in,
-              output logic [(N-1):0] signal_out
-          );
+    input  logic [(N-1):0] signal_in,
+    output logic [(N-1):0] signal_out
+);
 
-          localparam logic [N-1:0] BASE_ADDR   = 52'h2080000000; // 130 GB
-          localparam logic [N-1:0] UPPER_BOUND = 52'h247FFFFFFF; // 130 + 16 GB
-          localparam logic [11:0] MOD_MASK     = 12'hFFF; // mask for 4KB
+localparam logic [N-1:0] BASE_ADDR   = 52'h2080000000; // 130 GB
+localparam logic [N-1:0] UPPER_BOUND = 52'h247FFFFFFF; // 130 + 16 GB
+localparam logic [11:0] MOD_MASK     = 12'hFFF; // mask for 4KB
 
-          always_comb begin
-              if (signal_in > UPPER_BOUND) begin
-                  signal_out =
-                      (((signal_in - UPPER_BOUND) >> 17) << 12) +
-                      BASE_ADDR + (signal_in & MOD_MASK);
-              end
-              else begin
-                  signal_out = signal_in;
-              end
-          end
+always_comb begin
+    if (signal_in > UPPER_BOUND) begin
+        signal_out =
+            (((signal_in - UPPER_BOUND) >> 17) << 12) +
+            BASE_ADDR + (signal_in & MOD_MASK);
+    end
+    else begin
+        signal_out = signal_in;
+    end
+end
 
-          endmodule`}</pre>
+endmodule`}</pre>
           </div>
 
           <p style={{ color: '#4b5563', marginTop: '1.5rem' }}>
