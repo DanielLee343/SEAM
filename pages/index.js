@@ -195,16 +195,24 @@ export default function Home() {
             the host.
           </p>
 
-          <p style={{ color: '#4b5563', marginTop: '1rem' }}>
-            Here is the hardware architecture and where the modifications are implemented.
-          </p>
-
-          <div className="eval-grid">
-            <div className="eval-item">
-              <img
-                src="/hardware-architecture.png"
-                alt="Hardware Architecture and AFU Modifications"
-              />
+          <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+            <img
+              src="/hardware-architecture.png"
+              alt="Hardware Architecture and AFU Modifications"
+              style={{
+                maxWidth: '100%',
+                borderRadius: '0.75rem'
+              }}
+            />
+            <div
+              style={{
+                marginTop: '0.75rem',
+                color: '#6b7280',
+                fontSize: '0.9rem'
+              }}
+            >
+              Hardware architecture of the CXL Type-3 FPGA device and the location of the
+              implemented AFU modifications.
             </div>
           </div>
 
@@ -217,16 +225,24 @@ export default function Home() {
             memory controller.
           </p>
 
-          <p style={{ color: '#4b5563', marginTop: '1rem' }}>
-            Here is the detailed implementation inside the AFU.
-          </p>
-
-          <div className="eval-grid">
-            <div className="eval-item">
-              <img
-                src="/afu-merging-logic.png"
-                alt="Detailed AFU Merging Logic"
-              />
+          <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+            <img
+              src="/afu-merging-logic.png"
+              alt="Detailed AFU Merging Logic"
+              style={{
+                maxWidth: '100%',
+                borderRadius: '0.75rem'
+              }}
+            />
+            <div
+              style={{
+                marginTop: '0.75rem',
+                color: '#6b7280',
+                fontSize: '0.9rem'
+              }}
+            >
+              Detailed AFU implementation showing interception and remapping of AXI
+              address signals before forwarding requests to the memory controller.
             </div>
           </div>
 
@@ -242,8 +258,8 @@ export default function Home() {
 
           <div
             style={{
-              background: '#0f172a',
-              color: '#e5e7eb',
+              background: '#c2eabe',
+              color: '#000000',
               padding: '1.25rem',
               borderRadius: '0.75rem',
               overflowX: 'auto',
@@ -251,8 +267,12 @@ export default function Home() {
               lineHeight: '1.5'
             }}
           >
-            <pre style={{ margin: 0 }}>
-          {`module cpm_merging #(parameter N = 52 )(
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: 'pre-wrap'
+              }}
+          >{`module cpm_merging #(parameter N = 52 )(
               input  logic [(N-1):0] signal_in,
               output logic [(N-1):0] signal_out
           );
@@ -265,16 +285,14 @@ export default function Home() {
               if (signal_in > UPPER_BOUND) begin
                   signal_out =
                       (((signal_in - UPPER_BOUND) >> 17) << 12) +
-                      BASE_ADDR +
-                      (signal_in & MOD_MASK);
+                      BASE_ADDR + (signal_in & MOD_MASK);
               end
               else begin
                   signal_out = signal_in;
               end
           end
 
-          endmodule`}
-            </pre>
+          endmodule`}</pre>
           </div>
 
           <p style={{ color: '#4b5563', marginTop: '1.5rem' }}>
@@ -300,13 +318,13 @@ export default function Home() {
               borderRadius: '0.75rem',
               fontSize: '1rem',
               color: '#111827',
-              overflowX: 'auto'
+              overflowX: 'auto',
+              textAlign: 'center',
+              fontFamily: 'monospace'
             }}
           >
-            <code>
-              MergedAddr = [(addr - upperbound_addr) / (4K * group_size)] * 4K
-              + base_addr + addr % 4K
-            </code>
+            MergedAddr = [(addr - upperbound_addr) / (4K * group_size)] * 4K +
+            base_addr + addr % 4K
           </div>
 
           <p style={{ color: '#4b5563', marginTop: '1.5rem' }}>
@@ -314,7 +332,6 @@ export default function Home() {
             the merging/remapping logic, and forward the modified addresses to the memory
             controller while leaving the rest of the AXI data path untouched.
           </p>
-
           {/* OS Procedures */}
           <h3 style={{ color: '#1e3a5f', marginTop: '3rem', marginBottom: '0.5rem' }}>OS Modifications</h3>
           <p style={{ color: '#4b5563' }}>
