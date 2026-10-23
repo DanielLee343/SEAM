@@ -27,7 +27,7 @@ export default function Home() {
       <section className="hero">
         <h1>CPM</h1>
         <p className="subtitle">Non-intrusive Cache Side Channel Protection Near Memory</p>
-        <p className="venue">MICRO 2026 &middot; Athens, Greece</p>
+        {/* <p className="venue">MICRO 2026 &middot; Athens, Greece</p> */}
         <div className="abstract">
           <p>
             Memory sharing across security domains enables reuse-based side channels that leak non-shared data,
@@ -587,7 +587,7 @@ endmodule`}</pre>
       </div>
 
       {/* Evaluation Section */}
-      <div className="section-alt" id="evaluation">
+      {/* <div className="section-alt" id="evaluation">
         <div className="section">
           <h2>Evaluation</h2>
           <p className="section-intro">
@@ -721,7 +721,7 @@ endmodule`}</pre>
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Download Section */}
       <div className="download-section" id="download">
@@ -737,8 +737,11 @@ endmodule`}</pre>
 
       {/* Footer */}
       <footer className="footer">
-        CPM: Non-intrusive Cache Side Channel Protection Near Memory &middot; MICRO 2026
+        CPM: Non-intrusive Cache Side Channel Protection Near Memory
       </footer>
+      {/* <footer className="footer">
+        CPM: Non-intrusive Cache Side Channel Protection Near Memory &middot; MICRO 2026
+      </footer> */}
     </>
   )
 }
