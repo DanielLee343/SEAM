@@ -17,7 +17,7 @@ export default function Home() {
             <a href="#motivation">Motivation</a>
             <a href="#approach">Approach</a>
             <a href="#generality">Generality</a>
-            <a href="#evaluation">Evaluation</a>
+            {/* <a href="#evaluation">Evaluation</a> */}
             <a href="#download">Download</a>
           </div>
         </div>
